@@ -11,9 +11,9 @@ It never fixes blind: no pull request without a test that fails with the crash's
 ![de-kaput: top crashes, dekaput list, a test that crashes, dekaput verify, dekaput open-pr, pull request](assets/how-it-works.svg)
 
 1. Your coding agent (Codex or Claude Code) reads the latest release's top crashes from Crashlytics through the Firebase MCP server.
-2. `dekaput list` ranks them and picks the next one without a pull request.
-3. The agent writes a test that reproduces that one crash, then fixes it.
-4. `dekaput verify` proves it: the test fails on your default branch with the crash's exception, reaching the crash's code, and passes with the fix, with the module's tests green. It writes a receipt.
+2. `dekaput list` ranks them, picks the next one without a pull request, and finds the commit that crash was built from: the git revision Crashlytics recorded for the build, or your release tag.
+3. The agent checks out a new git worktree on a fresh branch from your default branch, so your own checkout is never touched. There it writes a test that reproduces that one crash, then fixes it.
+4. `dekaput verify` proves it in throwaway worktrees: the test fails on your default branch with the crash's exception, reaching the crash's code, and passes with the fix, with the module's tests green. If the test already passes on your default branch, it runs on the crash's commit instead; crashing there means the crash is already fixed and not yet shipped. It writes a receipt.
 5. `dekaput open-pr` refuses without that receipt, then opens a normal pull request with the test, the fix and the proof.
 
 One crash per run. If the test already passes on your default branch but crashes on the release, the crash is already fixed and not yet shipped; the pull request adds the test so it stays fixed.

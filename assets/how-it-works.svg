@@ -23,9 +23,11 @@
 
   <rect x="136" y="60" width="140" height="44" rx="8" fill="#ffffff" stroke="#8250df" stroke-width="1.6"/>
   <text class="cmd" x="206" y="82">dekaput list</text>
+  <text class="label" x="206" y="50">finds the crash's commit</text>
 
   <rect x="300" y="60" width="140" height="44" rx="8" fill="#ffffff" stroke="#8250df" stroke-width="1.6"/>
   <text class="box" x="370" y="82">Test that crashes</text>
+  <text class="label" x="370" y="122">in a new worktree</text>
 
   <rect x="464" y="60" width="140" height="44" rx="8" fill="#f3edff" stroke="#8250df" stroke-width="2.4"/>
   <text class="cmd" x="534" y="82">dekaput verify</text>

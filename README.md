@@ -25,10 +25,6 @@ Built for native Android, native iOS and Kotlin Multiplatform apps. Gradle first
 
 Until the npm package is published, run the CLI from a clone: `node <clone>/bin/dekaput.mjs` in place of `npx @vaazh-studios/de-kaput`.
 
-## Credit
-
-The reproduce-first idea and the receipt-gated pull request come from [krezzoid/fixcrash](https://github.com/krezzoid/fixcrash) (MIT). de-kaput is a separate implementation that works with any coding agent.
-
 ## License
 
 Apache-2.0

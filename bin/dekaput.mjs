@@ -5,19 +5,21 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import { parseArgs } from 'node:util';
-import { sourceSetFinder } from '../src/classify.mjs';
+import { nativeFileFinder, sourceSetFinder } from '../src/classify.mjs';
 import { appFor, listOptions, loadConfig } from '../src/config.mjs';
 import { git, repoRoot } from '../src/git.mjs';
 import { formatList, listCrashes, PR_LABEL } from '../src/list.mjs';
 import { parseMapping } from '../src/mapping.mjs';
 import { OPEN_PR_OPTIONS, openPr } from '../src/open-pr.mjs';
+import { dekaputDir } from '../src/receipt.mjs';
 import { verify, VERIFY_OPTIONS } from '../src/verify.mjs';
 
 const USAGE = `usage:
   dekaput list [--app <name>] [--mapping <mapping.txt>] [--max-prs <n>] [--json] <event files>
                (without .github/de-kaput.yml: --app-package <pkg> [--ignore-frame <pkg>] [--probe <regex>])
-  dekaput verify --issue <id> --test <filter> --exception <class> [--gradle-task <:module:task>]
+  dekaput verify --issue <id> --test <filter> --exception <class or signal> [--gradle-task <:module:task>]
                  --anchor <frame or class> [--anchor-kind frame|message] [--release <ref>]
+                 (an Xcode filter is Target/Class/method; the exception EXC_BREAKPOINT, SIGABRT or an NSException name)
   dekaput open-pr --title <title> --body-file <file> [--also <issue id>]`;
 
 function list(args) {
@@ -40,6 +42,8 @@ function list(args) {
   });
   if (!positionals.length) throw new Error('give the event files to list');
   const root = repoRoot();
+  // The crash events the agent wrote live in .dekaput/events/; keep them out of commits.
+  dekaputDir(root);
   const config = loadConfig(root);
   // Flags win; otherwise each crash takes the config's app for its platform.
   const fromFlags = values['app-package'].length > 0;
@@ -55,6 +59,7 @@ function list(args) {
     optionsFor: fromFlags ? null : (event) => { const app = appFor(config, event.platform, values.app); return app && listOptions(app); },
     mapping: values.mapping ? parseMapping(fs.readFileSync(values.mapping, 'utf8')) : null,
     sourceSetOf: sourceSetFinder(git(['ls-files', '*.kt', '*.java'], root).split('\n')),
+    nativeFileOf: nativeFileFinder(git(['ls-files', '*.swift', '*.m', '*.mm'], root).split('\n')),
     options: {
       appPackages: values['app-package'],
       ignoreFrames: values['ignore-frame'],

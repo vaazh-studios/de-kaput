@@ -3,7 +3,10 @@
 // A run is { status: 'pass'|'fail'|'error', failureType?, stack?, ran? }:
 // 'fail' is a test that ran and failed, 'error' is one that never ran (did
 // not compile, no results). stack is the failure text: message first, then
-// frames. ran lists the test classes (Gradle) or files (vitest) that ran.
+// frames. ran lists the test classes (Gradle, Xcode) or files (vitest) that ran.
+// The Xcode runner also gives message, frames [{ symbol, file }] and signal
+// (a crash's EXC_BREAKPOINT is also its SIGTRAP), since Swift symbols carry
+// parentheses that the text form cannot split.
 //
 // Proven: the new test fails on the branch base with the crash's exception,
 // thrown from app code, reaching the crash's anchor (a frame, or the app class
@@ -13,16 +16,23 @@
 // The gate guards against honest mistakes (a test that does not reproduce the
 // crash, a fix that only silences it), not against forging a receipt.
 
-export const TEST_PATH = /(\/src\/[^/]*[Tt]est\/|(^|\/)test\/|\.(test|spec)\.[cm]?[jt]s$)/;
-const CODE_FILE = /\.(kt|kts|java|swift|ts|js|mjs)$/;
+// src/test/ and src/commonTest/ (Gradle), test/ and *.test.ts (JS), a *Tests/ target folder (Xcode, SwiftPM).
+export const TEST_PATH = /(\/src\/[^/]*[Tt]est\/|(^|\/)test\/|\.(test|spec)\.[cm]?[jt]s$|(^|\/)[^/]*Tests\/)/;
+const CODE_FILE = /\.(kt|kts|java|swift|m|mm|h|ts|js|mjs)$/;
 // Build, test-runner and gate files: changing them can exclude or weaken tests.
-const CONFIG_FILE = /(\.gradle(\.kts)?$|gradle\.properties$|libs\.versions\.toml$|(^|\/)package(-lock)?\.json$|(vitest|jest|vite)\.config\.|(^|\/)tsconfig[^/]*\.json$|(^|\/)\.claude\/|(^|\/)\.github\/)/;
+const CONFIG_FILE = new RegExp([
+  /\.gradle(\.kts)?$|gradle\.properties$|libs\.versions\.toml$/,
+  /(^|\/)package(-lock)?\.json$|(vitest|jest|vite)\.config\.|(^|\/)tsconfig[^/]*\.json$/,
+  /\.pbxproj$|\.xcscheme$|\.xctestplan$|\.xcconfig$|(^|\/)Package\.(swift|resolved)$|(^|\/)Podfile(\.lock)?$/,
+  /(^|\/)\.claude\/|(^|\/)\.github\//,
+].map((r) => r.source).join('|'));
 const FORBIDDEN_IN_TESTS = [
-  [/@(?:[\w.]+\.)?(?:Ignore|Disabled)\b/, 'switches a test off'],
-  [/Thread\.sleep\(/, 'sleeps in a test'],
+  [/@(?:[\w.]+\.)?(?:Ignore|Disabled)\b|\.disabled\(/, 'switches a test off'],
+  [/Thread\.sleep\(|\bu?sleep\(|Task\.sleep\b/, 'sleeps in a test'],
   [/\bretry\b|@RepeatedTest|@Flaky/i, 'retries a test'],
-  [/\b(it|test|describe)\.(skip|todo)\(/, 'skips a test'],
-  [/\bassume(?:True|False|That|NotNull)?\s*\(|\bAssume\./, 'makes a test conditional'],
+  [/\b(it|test|describe)\.(skip|todo)\(|\bXCTSkip/, 'skips a test'],
+  [/\bassume(?:True|False|That|NotNull)?\s*\(|\bAssume\.|\.enabled\(\s*if:/, 'makes a test conditional'],
+  [/\bXCTExpectFailure\b|\bwithKnownIssue\b/, 'expects the failure instead of fixing it'],
 ];
 
 const simpleName = (type) => (type ?? '').split('.').pop();
@@ -88,20 +98,33 @@ function splitStack(stack) {
   return { message: (first < 0 ? lines : lines.slice(0, first)).join('\n'), frames };
 }
 
+// A Swift symbol as the release build and the test build both name it: a release
+// build specializes and thunks what a debug build calls plainly.
+const SWIFT_WRAPPER = /^(?:specialized |merged |@objc |partial apply for |(?:reabstraction )?thunk for |generic specialization <[^>]*> of )+/;
+export const swiftName = (symbol) => symbol.replace(SWIFT_WRAPPER, '').replace(/\s+->\s+.*$/, '').trim();
+
+const reachesFrame = (symbol, anchor) => {
+  if (symbol === anchor || symbol.startsWith(`${anchor}$`)) return true;
+  const name = swiftName(symbol);
+  // "closure #1 in Parser.load()" runs inside Parser.load().
+  return name === swiftName(anchor) || name.endsWith(` in ${swiftName(anchor)}`);
+};
+
 const reaches = (anchor, { message, frames }) =>
-  anchor.kind === 'message'
-    ? message.includes(anchor.text)
-    : frames.some((f) => f.symbol === anchor.text || f.symbol.startsWith(`${anchor.text}$`));
+  anchor.kind === 'message' ? message.includes(anchor.text) : frames.some((f) => reachesFrame(f.symbol, anchor.text));
+
+const framesOf = (run) => (run.frames ? { message: run.message ?? '', frames: run.frames } : splitStack(run.stack));
 
 // Why a run on base is not the crash, or null when it is.
 function notTheCrash(run, { exception, anchor, testFiles, knownTestFiles }) {
   if (run.status === 'error') return 'fails before for another reason: the test did not compile or did not run';
   if (run.status === 'pass') return 'passes before the fix: the test does not reproduce the crash';
-  if (simpleName(run.failureType) !== simpleName(exception)) {
+  if (![run.failureType, run.signal].some((t) => t && simpleName(t) === simpleName(exception))) {
     return `fails before with ${run.failureType ?? 'an unknown error'}, not the crash's ${exception}`;
   }
-  const stack = splitStack(run.stack);
-  const top = stack.frames[0]?.file;
+  const stack = framesOf(run);
+  // The first frame with a source file: a Swift trap's first frames are the runtime's.
+  const top = stack.frames.find((f) => f.file && !f.file.startsWith('<'))?.file;
   const testNames = new Set([...testFiles, ...knownTestFiles].map(baseName));
   if (top && testNames.has(top)) return `the ${exception} is thrown by the test itself (${top}), not by app code`;
   if (!reaches(anchor, stack)) {

@@ -1,0 +1,123 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {
+  caughtFailure, crashFailure, crashReportFor, failureLocation, fatalMessage, parseCaughtException, parseCrashLog, parseTestResults, pickDestination,
+} from '../src/runners/xcode.mjs';
+
+const fixture = (name) => fs.readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8');
+
+const testCase = (name, result, ...messages) => ({
+  name: `${name}()`,
+  nodeIdentifier: `WordbookTests/${name}()`,
+  nodeType: 'Test Case',
+  result,
+  children: messages.map((m) => ({ name: m, nodeType: 'Failure Message' })),
+});
+const tree = (...cases) => ({
+  testNodes: [{
+    name: 'Wordbook',
+    nodeType: 'Test Plan',
+    children: [{ name: 'WordbookTests', nodeType: 'Unit test bundle', children: [{ name: 'WordbookTests', nodeType: 'Test Suite', children: cases }] }],
+  }],
+});
+
+test('the result bundle names the classes that ran and the first test that failed', () => {
+  const { ran, failed } = parseTestResults(tree(
+    testCase('testPasses', 'Passed'),
+    testCase('testCountOfNil', 'Failed', 'Crash: xctest at static xctest.main()'),
+    testCase('testRaise', 'Failed', 'planted (NSInvalidArgumentException)'),
+  ));
+  assert.deepEqual(ran, ['WordbookTests']);
+  assert.deepEqual(failed, { id: 'WordbookTests/testCountOfNil()', name: 'testCountOfNil()', messages: ['Crash: xctest at static xctest.main()'] });
+});
+
+test('skipped tests did not run', () => {
+  assert.deepEqual(parseTestResults(tree(testCase('testSkipped', 'Skipped'))), { ran: [], failed: null });
+});
+
+test('a Swift trap: EXC_BREAKPOINT and SIGTRAP, the frames with their files', () => {
+  const crash = parseCrashLog(fixture('ios-swift-trap.ips'));
+  assert.equal(crash.type, 'EXC_BREAKPOINT');
+  assert.equal(crash.signal, 'SIGTRAP');
+  assert.deepEqual(crash.frames[2], { symbol: 'static Parser.count(of:)', file: 'Parser.swift', line: 5, image: 'WordbookTests' });
+  assert.equal(crash.frames[0].file, null);
+});
+
+test('an uncaught NSException: its name, reason and throw stack', () => {
+  const report = {
+    exception: { type: 'EXC_CRASH', signal: 'SIGABRT' },
+    asi: { CoreFoundation: ["*** Terminating app due to uncaught exception 'NSRangeException', reason: '*** index 3 beyond bounds [0 .. 1]'"] },
+    lastExceptionBacktrace: [{ imageIndex: 0, symbol: '__exceptionPreprocess' }, { imageIndex: 1, symbol: 'Cart.item(at:)', sourceFile: 'Cart.swift', sourceLine: 9 }],
+    faultingThread: 0,
+    threads: [{ frames: [{ imageIndex: 0, symbol: '__pthread_kill' }] }],
+    usedImages: [{ name: 'CoreFoundation' }, { name: 'Shop' }],
+  };
+  const crash = parseCrashLog(`{"app_name":"Shop"}\n${JSON.stringify(report)}`);
+  assert.equal(crash.type, 'NSRangeException');
+  assert.equal(crash.signal, 'SIGABRT');
+  assert.equal(crash.message, '*** index 3 beyond bounds [0 .. 1]');
+  assert.deepEqual(crash.frames.map((f) => f.symbol), ['__exceptionPreprocess', 'Cart.item(at:)']);
+});
+
+test("a crash's stack starts at the first frame with a file and carries the Swift message", () => {
+  const failure = crashFailure(parseCrashLog(fixture('ios-swift-trap.ips')), 'Fatal error: Unexpectedly found nil while unwrapping an Optional value');
+  assert.equal(failure.failureType, 'EXC_BREAKPOINT');
+  assert.equal(failure.stack.split('\n').slice(0, 2).join('\n'),
+    'EXC_BREAKPOINT (SIGTRAP): Fatal error: Unexpectedly found nil while unwrapping an Optional value\n\tat static Parser.count(of:) (Parser.swift:5)');
+});
+
+test("an exception XCTest caught: its name, reason and the demangled stack, located where XCTest says", () => {
+  const names = { $s8Wordbook6ParserO5raiseyyFZ: 'static Parser.raise()', $s13WordbookTestsAAC9testRaiseyyF: 'WordbookTests.testRaise()' };
+  const caught = parseCaughtException(fixture('ios-caught-exception.txt'), (symbols) => symbols.map((s) => names[s] ?? s));
+  assert.equal(caught.type, 'NSInvalidArgumentException');
+  assert.equal(caught.message, 'planted');
+  assert.equal(caught.frames[3].symbol, 'static Parser.raise()');
+  const failure = caughtFailure(caught, { file: 'Parser.swift', line: 14 });
+  assert.deepEqual(failure.frames[3], { symbol: 'static Parser.raise()', file: 'Parser.swift', line: 14, image: 'WordbookTests' });
+  assert.equal(failure.stack.split('\n')[1], '\tat static Parser.raise() (Parser.swift:14)');
+});
+
+test('the Swift message and the failure location come from the test run output', () => {
+  const output = [
+    "Test Case '-[WordbookTests.WordbookTests testPasses]' started.",
+    "Test Case '-[WordbookTests.WordbookTests testCountOfNil]' started.",
+    'Wordbook/Parser.swift:5: Fatal error: Unexpectedly found nil while unwrapping an Optional value',
+    '/Users/me/my apps/Wordbook/Sources/Wordbook/Parser.swift:14: error: -[WordbookTests.WordbookTests testRaise] : planted (NSInvalidArgumentException)',
+  ].join('\n');
+  assert.equal(fatalMessage(output, 'testCountOfNil()'), 'Fatal error: Unexpectedly found nil while unwrapping an Optional value');
+  assert.equal(fatalMessage('nothing here', 'testCountOfNil()'), '');
+  assert.deepEqual(failureLocation(output, 'testRaise()'), { file: 'Parser.swift', line: 14 });
+  assert.equal(failureLocation(output, 'testOther()'), null);
+});
+
+test('the simulator is an iPhone on the newest iOS', () => {
+  const devices = {
+    'com.apple.CoreSimulator.SimRuntime.iOS-26-5': [{ name: 'iPhone 17 Pro', udid: 'A' }],
+    'com.apple.CoreSimulator.SimRuntime.iOS-27-0': [{ name: 'iPad Pro', udid: 'B' }, { name: 'iPhone 18 Pro', udid: 'C' }],
+    'com.apple.CoreSimulator.SimRuntime.watchOS-12-0': [{ name: 'Apple Watch', udid: 'D' }],
+  };
+  assert.equal(pickDestination(devices), 'platform=iOS Simulator,id=C');
+  assert.throws(() => pickDestination({}), /no iPhone simulator/);
+});
+
+test("without an attached crash log, the crash reporter's report of the test is used: recent, from a simulator, naming the test", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dekaput-reports-'));
+  const [header, body] = [fixture('ios-swift-trap.ips').split('\n')[0], JSON.parse(fixture('ios-swift-trap.ips').split('\n').slice(1).join('\n'))];
+  const write = (name, report, age = 0) => {
+    const file = path.join(dir, name);
+    fs.writeFileSync(file, `${header}\n${JSON.stringify(report)}`);
+    const at = new Date(Date.now() - age);
+    fs.utimesSync(file, at, at);
+  };
+  const since = Date.now() - 60_000;
+  write('mac-app.ips', { ...body, parentProc: 'launchd' });
+  write('old.ips', { ...body, parentProc: 'launchd_sim' }, 120_000);
+  assert.equal(crashReportFor('testCountOfNilDoesNotCrash()', since, dir), null);
+  write('xctest.ips', { ...body, parentProc: 'launchd_sim' });
+  assert.equal(parseCrashLog(crashReportFor('testCountOfNilDoesNotCrash()', since, dir)).frames[2].symbol, 'static Parser.count(of:)');
+  assert.equal(crashReportFor('testOther()', since, dir), null);
+  assert.equal(crashReportFor('testCountOfNilDoesNotCrash()', since, path.join(dir, 'missing')), null);
+});

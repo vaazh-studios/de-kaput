@@ -13,7 +13,18 @@ export const RESULTS = ['proven', 'fixed-on-main'];
 
 export const receiptPath = (root, head) => path.join(root, '.dekaput', 'receipts', `${head}.json`);
 
+// .dekaput/ holds receipts, crash events and build products. None of it is ever
+// committed, so it ignores itself: an agent's `git add -A` cannot pick it up.
+export function dekaputDir(root) {
+  const dir = path.join(root, '.dekaput');
+  fs.mkdirSync(dir, { recursive: true });
+  const ignore = path.join(dir, '.gitignore');
+  if (!fs.existsSync(ignore)) fs.writeFileSync(ignore, '*\n');
+  return dir;
+}
+
 export function writeReceipt(root, receipt) {
+  dekaputDir(root);
   const file = receiptPath(root, receipt.head);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, `${JSON.stringify(receipt, null, 2)}\n`);

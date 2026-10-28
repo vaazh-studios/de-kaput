@@ -34,7 +34,7 @@ function shapeOf(subtitle, appPackages) {
 
 // options: { appPackages, ignoreFrames, probes, releaseTags } for every crash, or
 // optionsFor(event) to pick them per crash (the config's app for its platform; null when none).
-export function listCrashes(events, { prs = [], options = {}, optionsFor = null, sourceSetOf = () => null, tags = [], mapping = null, maxPrs = 5 } = {}) {
+export function listCrashes(events, { prs = [], options = {}, optionsFor = null, sourceSetOf = () => null, nativeFileOf = () => null, tags = [], mapping = null, maxPrs = 5 } = {}) {
   const optsOf = (event) => (optionsFor ? optionsFor(event) : options);
   const fatal = events
     .filter((e) => e.errorType === 'FATAL')
@@ -54,7 +54,7 @@ export function listCrashes(events, { prs = [], options = {}, optionsFor = null,
       handled: handledBy(event.issueId, prs, event.notes ?? []),
       appPackages: optsOf(event)?.appPackages ?? [],
       ...(event.decoded && Object.keys(event.decoded).length ? { decoded: event.decoded } : {}),
-      ...(optsOf(event) ? classifyIssue(event, sourceSetOf, optsOf(event)) : { stop: 'skip', reason: `no app for ${event.platform.toLowerCase()} in the config` }),
+      ...(optsOf(event) ? classifyIssue(event, sourceSetOf, { ...optsOf(event), nativeFileOf }) : { stop: 'skip', reason: `no app for ${event.platform.toLowerCase()} in the config` }),
       // Android events carry the build's git revision (buildStamp); it beats a tag lookup.
       release: event.revision ?? tagFor(event.platform.toLowerCase(), event.version, tags, optsOf(event)?.releaseTags),
       evidence: evidenceMarkdown(issue, [event]),
@@ -68,7 +68,6 @@ export function listCrashes(events, { prs = [], options = {}, optionsFor = null,
     const twin = crashes.find((c) => c !== crash && classAnchored(c) && c.platform === crash.platform && shapeOf(c.subtitle, c.appPackages) === shape);
     if (twin) Object.assign(crash, { stop: 'same-as', sameAs: twin.issueId, reason: `the same crash as ${twin.issueId}; one fix covers both` });
   }
-  // A twin ranks its group: when the top crash is the renamed copy, its readable twin is next.
   // A twin ranks its group: when the top crash is the renamed copy, its readable twin takes its place.
   const resolve = (c) => (c.stop === 'same-as' ? crashes.find((t) => t.issueId === c.sameAs) : c);
   const workable = crashes.map(resolve).filter((c) => c && !c.handled && c.stop !== 'skip' && c.stop !== 'same-as');

@@ -1,0 +1,59 @@
+{"app_name":"xctest","bug_type":"309"}
+{
+  "exception": {
+    "type": "EXC_BREAKPOINT",
+    "signal": "SIGTRAP"
+  },
+  "faultingThread": 0,
+  "threads": [
+    {
+      "triggered": true,
+      "frames": [
+        {
+          "imageIndex": 0,
+          "imageOffset": 1054912,
+          "symbol": "closure #1 in closure #1 in _assertionFailure(_:_:file:line:flags:)"
+        },
+        {
+          "imageIndex": 0,
+          "imageOffset": 1053756,
+          "symbol": "_assertionFailure(_:_:file:line:flags:)"
+        },
+        {
+          "imageIndex": 1,
+          "imageOffset": 8288,
+          "symbol": "static Parser.count(of:)",
+          "sourceFile": "Parser.swift",
+          "sourceLine": 5
+        },
+        {
+          "imageIndex": 1,
+          "imageOffset": 5612,
+          "symbol": "implicit closure #1 in WordbookTests.testCountOfNilDoesNotCrash()",
+          "sourceFile": "/<compiler-generated>"
+        },
+        {
+          "imageIndex": 2,
+          "imageOffset": 259388,
+          "symbol": "closure #1 in XCTAssertEqual<A>(_:_:_:file:line:)"
+        },
+        {
+          "imageIndex": 2,
+          "imageOffset": 244580,
+          "symbol": "partial apply for closure #1 in XCTAssertEqual<A>(_:_:_:file:line:)"
+        }
+      ]
+    }
+  ],
+  "usedImages": [
+    {
+      "name": "libswiftCore.dylib"
+    },
+    {
+      "name": "WordbookTests"
+    },
+    {
+      "name": "libXCTestSwiftSupport.dylib"
+    }
+  ]
+}

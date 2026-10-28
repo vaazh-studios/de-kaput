@@ -4,7 +4,7 @@ Your app went kaput. de-kaput reproduces the crash with a test, fixes it, and op
 
 It never fixes blind: no pull request without a test that fails with the crash's own exception before the fix and passes after it. A person always reviews and merges.
 
-> **Status: early.** The first goal is one crash going end to end, from Crashlytics to a pull request with its test. Configuration comes after that.
+> **Status: early.** One Android crash has gone end to end, from Crashlytics to a pull request with its test. The Xcode runner proves crashes on a sample Swift package.
 
 ## How it works
 
@@ -20,7 +20,7 @@ It never fixes blind: no pull request without a test that fails with the crash's
    A crash no test can reach gets a note on the Crashlytics issue instead, and the run moves on.
 4. You get **one pull request per crash**, each reviewed and merged on its own. `--max-prs` caps how many are open at once.
 
-Built for native Android, native iOS and Kotlin Multiplatform apps. Gradle first; Xcode next.
+Built for native Android, native iOS and Kotlin Multiplatform apps: Gradle runs the JVM tests, and `xcodebuild` runs XCTest on an iPhone simulator (Xcode 16 or newer). On iOS a crash's identity is its Mach exception or signal (`EXC_BREAKPOINT`, `EXC_BAD_ACCESS`, `SIGABRT`) or its NSException name, read from the crash log the simulator writes.
 
 ## Configuration
 
@@ -35,11 +35,11 @@ apps:
   - name: android
     platform: android              # android or ios
     crashlytics-app-id: "1:1234567890:android:abc123"
-    packages: [com.example.app]    # your app's own code
+    packages: [com.example.app]    # your app's own Kotlin and Java code
     ignore-frames: [com.example.app.crashreporting]   # your crash reporter, never the cause
     probes: ["crash-reporting canary"]                # errors you raise on purpose
     release-tags: ["android/v{version}-{build}", "v{version}-{build}"]
-    modules:                       # where tests live, and the task that runs them
+    modules:                       # where tests live, and what runs them
       - path: app
         gradle-task: ":app:testDebugUnitTest"
       - path: shared
@@ -48,10 +48,13 @@ apps:
   - name: ios
     platform: ios
     crashlytics-app-id: "1:1234567890:ios:def456"
-    packages: [com.example.app]
+    modules:
+      - path: ios                  # "." when the Xcode project is at the repo root
+        xcode-scheme: App
+        xcode-workspace: App.xcworkspace   # or xcode-project; neither for a Swift package
 ```
 
-With it, the commands need no app-specific flags: `list` takes each crash's app by platform, and `verify` finds the Gradle task from the module that holds the new test. Flags still win over the file. A mistake in the file is named, not guessed (`unknown key "open-pr-limit"`).
+With it, the commands need no app-specific flags: `list` takes each crash's app by platform, and `verify` finds the Gradle task or Xcode scheme from the module that holds the new test. On iOS your app's own code is its Swift and Objective-C files in the repo, so `packages` only matters for Kotlin Multiplatform code; `xcode-destination` picks a simulator (otherwise an iPhone on the newest iOS installed). Flags still win over the file. A mistake in the file is named, not guessed (`unknown key "open-pr-limit"`).
 
 ## Use it with your agent
 

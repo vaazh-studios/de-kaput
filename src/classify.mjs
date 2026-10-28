@@ -11,10 +11,14 @@
 // ('main', 'commonMain', 'androidMain', 'iosMain', ...) or null when the repo has none.
 //
 // options (all from the app, nothing is built in):
-//   appPackages: ['com.example.app'] - code that counts as the app's own
+//   appPackages: ['com.example.app'] - Kotlin and Java code that counts as the app's own
 //   ignoreFrames: ['com.example.app.crashreporting'] - the app's own crash reporter,
 //     which sits on every unhandled-exception path and is never the cause
 //   probes: [/crash-reporting canary/i] - errors the app raises on purpose
+//   nativeFileOf(fileName) - the repo path of a Swift or Objective-C file a frame
+//     names (outside the tests), or null: native iOS code has no packages, its files are its own
+
+import { TEST_PATH } from './proof.mjs';
 
 // Source sets the JVM host tests cannot run (Kotlin/Native and Apple targets).
 const NOT_ON_THE_JVM = /^(ios|apple|native|macos|watchos|tvos|linux|mingw|js|wasm)/i;
@@ -34,8 +38,11 @@ export function parseFrames(text) {
 }
 
 function exceptionOf(event) {
-  const first = (event.exceptions ?? '').split('\n')[0];
+  const first = (event.exceptions ?? '').split('\n')[0].replace(/^Fatal Exception: /, '');
   const line = first && !first.trim().startsWith('at ') ? first : event.subtitle ?? '';
+  // iOS names a crash by its Mach exception or signal: "EXC_BAD_ACCESS (KERN_INVALID_ADDRESS)", "SIGABRT (ABORT)".
+  const signal = /^(EXC_[A-Z_]+|SIG[A-Z]+)\b(.*)$/.exec(line.trim());
+  if (signal) return { type: signal[1], message: signal[2].trim() };
   const [type, ...rest] = line.split(/: | - /);
   return { type: type.trim(), message: rest.join(': ').trim() };
 }
@@ -52,7 +59,7 @@ function anchored(kind, text, sourceSet, exception) {
   return { stop: 'note', reason: `${text} is in ${where}; the JVM tests cannot reproduce it`, exception };
 }
 
-function decide(event, sourceSetOf, { appPackages = [], ignoreFrames = [], probes = [] }) {
+function decide(event, sourceSetOf, { appPackages = [], ignoreFrames = [], probes = [], nativeFileOf = () => null }) {
   const { type, message } = exceptionOf(event);
   if (probes.some((p) => p.test(`${event.subtitle ?? ''}\n${message}`))) {
     return { stop: 'skip', reason: 'a deliberate crash-reporting probe, expected' };
@@ -60,6 +67,9 @@ function decide(event, sourceSetOf, { appPackages = [], ignoreFrames = [], probe
   // Non-fatals are errors the app caught and reported itself (mostly network).
   if (event.errorType === 'NON_FATAL') return { stop: 'skip', reason: 'non-fatal: an error the app caught and reported; not attempted' };
   if (event.errorType === 'ANR') return { stop: 'skip', reason: 'ANR: main-thread stalls need a trace, not a unit test' };
+  if (/0x8badf00d/i.test(`${event.subtitle ?? ''}\n${event.exceptions ?? ''}`)) {
+    return { stop: 'skip', reason: 'watchdog kill (0x8badf00d): the main thread was blocked too long; needs a trace, not a unit test' };
+  }
   if (type.endsWith('OutOfMemoryError')) {
     return { stop: 'note', reason: 'OutOfMemoryError: memory pressure needs profiling, not a unit test' };
   }
@@ -77,7 +87,12 @@ function decide(event, sourceSetOf, { appPackages = [], ignoreFrames = [], probe
   const app = prefixes(appPackages);
   const ignored = prefixes(ignoreFrames);
   const isAppSymbol = (symbol) => app.some((p) => symbol.startsWith(p)) && !ignored.some((p) => symbol.startsWith(p));
-  const top = frames.find((f) => isAppSymbol(f.symbol));
+  const top = frames.find((f) => isAppSymbol(f.symbol) || nativeFileOf(f.file));
+  if (top && !isAppSymbol(top.symbol)) {
+    // Swift or Objective-C in the repo: the Xcode runner reproduces it on a simulator.
+    const file = nativeFileOf(top.file);
+    return { stop: 'attempt', reason: `${type} anchored on ${top.symbol} (${file})`, exception: type, anchor: { kind: 'frame', text: top.symbol, sourceSet: file } };
+  }
   if (top) return anchored('frame', top.symbol, sourceSetOf(top.file, classOf(top.symbol)), type);
   const appClassInText = app.length
     ? new RegExp(`\\b((?:${app.map((p) => escape(p.slice(0, -1))).join('|')})(?:\\.[A-Za-z_$][\\w$]*)+)`)
@@ -120,6 +135,12 @@ export const isInternalDevice = (device) => INTERNAL_DEVICE.test(device ?? '');
 
 export function classifyIssue(event, sourceSetOf, options = {}) {
   return { ...decide(event, sourceSetOf, options), internalDevice: isInternalDevice(event.device) };
+}
+
+// nativeFileOf over the repo's file list: the Swift or Objective-C file of that name, outside the tests.
+export function nativeFileFinder(paths) {
+  const own = paths.filter((p) => /\.(swift|mm?)$/.test(p) && !TEST_PATH.test(p));
+  return (fileName) => (fileName && /\.(swift|mm?)$/.test(fileName) ? own.find((p) => p === fileName || p.endsWith(`/${fileName}`)) ?? null : null);
 }
 
 // sourceSetOf over the repo's file list (git ls-files): the file whose path

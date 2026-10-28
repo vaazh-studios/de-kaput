@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { classifyIssue, parseFrames, sourceSetFinder, stableText } from '../src/classify.mjs';
+import { classifyIssue, nativeFileFinder, parseFrames, sourceSetFinder, stableText } from '../src/classify.mjs';
 
 const fixture = (name) => JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8'));
 // Stands in for the repo lookup: every file the fixtures name lives in commonMain.
@@ -128,4 +128,30 @@ test('the stable text around an R8 name is the anchor when there is no mapping',
   assert.equal(stableText('Key sm8:currentTab was used multiple times '), 'currentTab was used multiple times');
   assert.equal(stableText('no renamed class in here at all'), null);
   assert.equal(stableText('ab1: x'), null);
+});
+
+// A native iOS app: Swift sources and tests, no Kotlin packages.
+const swiftRepo = nativeFileFinder(['Sources/Wordbook/Parser.swift', 'Sources/Wordbook/WordList.swift', 'Tests/WordbookTests/ParserTests.swift', 'README.md']);
+
+test('a native Swift crash is attempted, anchored on its top frame in a Swift file of the repo', () => {
+  const result = classifyIssue(fixture('ios-swift-unwrap.json'), () => null, { nativeFileOf: swiftRepo });
+  assert.equal(result.stop, 'attempt');
+  assert.equal(result.exception, 'EXC_BREAKPOINT');
+  assert.deepEqual(result.anchor, { kind: 'frame', text: 'specialized static Parser.count(of:)', sourceSet: 'Sources/Wordbook/Parser.swift' });
+});
+
+test('Swift files in the tests, and files the repo does not have, are not app code', () => {
+  assert.equal(swiftRepo('ParserTests.swift'), null);
+  assert.equal(swiftRepo('App.swift'), null);
+  assert.equal(swiftRepo('Parser.kt'), null);
+  const elsewhere = classifyIssue(fixture('ios-swift-unwrap.json'), () => null, { nativeFileOf: () => null });
+  assert.equal(elsewhere.stop, 'skip');
+});
+
+test('iOS names a crash by its signal; a watchdog kill is skipped', () => {
+  const abort = classifyIssue({ ...fixture('ios-swift-unwrap.json'), subtitle: 'SIGABRT (ABORT)' }, () => null, { nativeFileOf: swiftRepo });
+  assert.equal(abort.exception, 'SIGABRT');
+  const watchdog = classifyIssue({ ...fixture('ios-swift-unwrap.json'), subtitle: 'EXC_CRASH (SIGKILL) 0x8badf00d' }, () => null, { nativeFileOf: swiftRepo });
+  assert.equal(watchdog.stop, 'skip');
+  assert.match(watchdog.reason, /watchdog/);
 });

@@ -62,3 +62,10 @@ test('any other result is refused', () => {
   receipt({ result: 'rejected' });
   assert.match(checkReceipt(repo).reason, /not proven or fixed-on-main/);
 });
+
+test('.dekaput/ ignores itself, so receipts and build products never show up to git', () => {
+  receipt();
+  fs.mkdirSync(path.join(repo, '.dekaput', 'derived'), { recursive: true });
+  fs.writeFileSync(path.join(repo, '.dekaput', 'derived', 'build.o'), 'x');
+  assert.equal(git('status', '--porcelain'), '');
+});

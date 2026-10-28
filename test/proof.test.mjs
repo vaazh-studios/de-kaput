@@ -196,3 +196,60 @@ test("a filter that does not run the branch's new test is rejected", () => {
   assert.match(r.reason, /does not run the branch's new test/);
   assert.equal(decide({ ...base, baseRun: { ...crashed, ran: ['com.x.ParserTest'] }, headRun: pass, suiteRun: pass }).ok, true);
 });
+
+// iOS: a Swift package's fix and its new test, and the runs the Xcode runner reports.
+const swiftDiff = [
+  'diff --git a/Sources/Wordbook/Parser.swift b/Sources/Wordbook/Parser.swift',
+  '--- a/Sources/Wordbook/Parser.swift',
+  '+++ b/Sources/Wordbook/Parser.swift',
+  '@@ -1,3 +1,3 @@',
+  '-        let value = text!',
+  '+        guard let value = text else { return 0 }',
+  'diff --git a/Tests/WordbookTests/ParserTests.swift b/Tests/WordbookTests/ParserTests.swift',
+  'new file mode 100644',
+  '--- /dev/null',
+  '+++ b/Tests/WordbookTests/ParserTests.swift',
+  '@@ -0,0 +1,3 @@',
+  '+    func testCountOfNil() { XCTAssertEqual(Parser.count(of: nil), 0) }',
+].join('\n');
+const trap = (...frames) => ({
+  status: 'fail',
+  failureType: 'EXC_BREAKPOINT',
+  signal: 'SIGTRAP',
+  message: 'Fatal error: Unexpectedly found nil while unwrapping an Optional value',
+  frames: [{ symbol: '_assertionFailure(_:_:file:line:flags:)', file: null }, ...frames],
+  stack: 'EXC_BREAKPOINT (SIGTRAP): Fatal error: Unexpectedly found nil while unwrapping an Optional value',
+  ran: ['ParserTests'],
+});
+const appFrame = { symbol: 'static Parser.count(of:)', file: 'Parser.swift' };
+const testFrame = { symbol: 'ParserTests.testCountOfNil()', file: 'ParserTests.swift' };
+const swift = { exception: 'EXC_BREAKPOINT', anchor: { kind: 'frame', text: 'specialized static Parser.count(of:)' }, diff: swiftDiff };
+
+test("a Swift trap in app code, anchored on the release build's specialized frame: proven", () => {
+  assert.deepEqual(decide({ ...swift, baseRun: trap(appFrame, testFrame), headRun: pass, suiteRun: pass }), { ok: true, result: 'proven' });
+  assert.equal(decide({ ...swift, exception: 'SIGTRAP', baseRun: trap(appFrame, testFrame), headRun: pass, suiteRun: pass }).ok, true);
+  const closure = { symbol: 'closure #1 in static Parser.count(of:)', file: 'Parser.swift' };
+  assert.equal(decide({ ...swift, baseRun: trap(closure, appFrame, testFrame), headRun: pass, suiteRun: pass }).ok, true);
+});
+
+test('a Swift trap in the test itself, or another exception, is not the crash', () => {
+  const own = decide({ ...swift, baseRun: trap(testFrame), headRun: pass, suiteRun: pass });
+  assert.match(own.reason, /thrown by the test itself \(ParserTests.swift\)/);
+  const other = decide({ ...swift, exception: 'EXC_BAD_ACCESS', baseRun: trap(appFrame, testFrame), headRun: pass, suiteRun: pass });
+  assert.match(other.reason, /not the crash's EXC_BAD_ACCESS/);
+  const elsewhere = decide({ ...swift, baseRun: trap({ symbol: 'static Parser.first(of:)', file: 'Parser.swift' }, testFrame), headRun: pass, suiteRun: pass });
+  assert.match(elsewhere.reason, /never reached app code/);
+});
+
+test('XCTSkip, expected failures, Swift sleeps and Xcode project edits are rejected; adding to a test file is not', () => {
+  const addTo = (line) => swiftDiff.replace('+    func testCountOfNil()', `${line}\n+    func testCountOfNil()`);
+  assert.match(decide({ ...swift, diff: addTo('+        throw XCTSkip("later")'), baseRun: trap(appFrame, testFrame) }).reason, /skips a test/);
+  assert.match(decide({ ...swift, diff: addTo('+        withKnownIssue { }'), baseRun: trap(appFrame, testFrame) }).reason, /expects the failure/);
+  assert.match(decide({ ...swift, diff: addTo('+        try await Task.sleep(for: .seconds(1))'), baseRun: trap(appFrame, testFrame) }).reason, /sleeps/);
+  assert.match(decide({ ...swift, diff: addTo('+    @Test(.disabled("flaky")) func b() {}'), baseRun: trap(appFrame, testFrame) }).reason, /switches a test off/);
+  const project = `${swiftDiff}\ndiff --git a/App.xcodeproj/project.pbxproj b/App.xcodeproj/project.pbxproj\n--- a/App.xcodeproj/project.pbxproj\n+++ b/App.xcodeproj/project.pbxproj\n+\t\tA1 /* ParserTests.swift */,`;
+  assert.match(decide({ ...swift, diff: project, baseRun: trap(appFrame, testFrame) }).reason, /project\.pbxproj/);
+  const appended = swiftDiff.replace('new file mode 100644\n--- /dev/null', '--- a/Tests/WordbookTests/ParserTests.swift');
+  assert.deepEqual(diffFacts(appended).testFiles, ['Tests/WordbookTests/ParserTests.swift']);
+  assert.equal(decide({ ...swift, diff: appended, baseRun: trap(appFrame, testFrame), headRun: pass, suiteRun: pass }).ok, true);
+});

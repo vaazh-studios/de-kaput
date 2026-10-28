@@ -9,13 +9,17 @@
 //     - name: android                  # optional, defaults to the platform
 //       platform: android              # android | ios
 //       crashlytics-app-id: "1:123:android:abc"
-//       packages: [com.example.app]    # the app's own code
+//       packages: [com.example.app]    # the app's own code (Kotlin and Java; optional for ios)
 //       ignore-frames: [com.example.app.crashreporting]   # its own crash reporter
 //       probes: ["crash-reporting canary"]                # errors it raises on purpose
 //       release-tags: ["{platform}/v{version}-{build}", "v{version}-{build}"]
-//       modules:                       # where tests live, and the task that runs them
+//       modules:                       # where tests live, and what runs them
 //         - path: shared/presentation
 //           gradle-task: ":shared:presentation:testAndroidHostTest"
+//         - path: ios                  # "." for the repo root
+//           xcode-scheme: App
+//           xcode-workspace: App.xcworkspace   # or xcode-project; neither for a Swift package (relative to path)
+//           xcode-destination: "platform=iOS Simulator,name=iPhone 17"   # optional
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -26,7 +30,8 @@ export const DEFAULT_RELEASE_TAGS = ['{platform}/v{version}-{build}', 'v{version
 const PLATFORMS = ['android', 'ios'];
 const TOP_KEYS = ['version', 'open-pull-requests-limit', 'reviewers', 'apps'];
 const APP_KEYS = ['name', 'platform', 'crashlytics-app-id', 'packages', 'ignore-frames', 'probes', 'release-tags', 'modules'];
-const MODULE_KEYS = ['path', 'gradle-task'];
+const XCODE_KEYS = ['xcode-scheme', 'xcode-workspace', 'xcode-project', 'xcode-destination'];
+const MODULE_KEYS = ['path', 'gradle-task', ...XCODE_KEYS];
 
 class ConfigError extends Error {}
 const fail = (where, message) => {
@@ -64,14 +69,25 @@ export function parseConfig(text) {
       const mWhere = `${where}.modules[${j}]`;
       onlyKnown(m, MODULE_KEYS, mWhere);
       if (typeof m.path !== 'string' || !m.path) fail(mWhere, '"path" is required');
-      if (typeof m['gradle-task'] !== 'string' || !m['gradle-task'].startsWith(':')) fail(mWhere, '"gradle-task" must be a task path such as ":app:testDebugUnitTest"');
-      return { path: m.path.replace(/\/+$/, ''), gradleTask: m['gradle-task'] };
+      const dir = m.path.replace(/\/+$/, '');
+      const root = dir === '.' ? '' : dir;
+      if ((m['gradle-task'] === undefined) === (m['xcode-scheme'] === undefined)) fail(mWhere, 'give "gradle-task" (Gradle) or "xcode-scheme" (Xcode), one of the two');
+      if (m['gradle-task'] !== undefined) {
+        if (typeof m['gradle-task'] !== 'string' || !m['gradle-task'].startsWith(':')) fail(mWhere, '"gradle-task" must be a task path such as ":app:testDebugUnitTest"');
+        if (XCODE_KEYS.some((k) => m[k] !== undefined)) fail(mWhere, 'the xcode-* keys need "xcode-scheme", not "gradle-task"');
+        return { path: root, gradleTask: m['gradle-task'] };
+      }
+      for (const key of XCODE_KEYS) if (m[key] !== undefined && (typeof m[key] !== 'string' || !m[key])) fail(mWhere, `"${key}" must be a name or path`);
+      if (m['xcode-workspace'] && m['xcode-project']) fail(mWhere, '"xcode-workspace" or "xcode-project", not both');
+      const xcode = { scheme: m['xcode-scheme'], workspace: m['xcode-workspace'] ?? null, project: m['xcode-project'] ?? null, destination: m['xcode-destination'] ?? null };
+      return { path: root, xcode };
     });
     return {
       name: app.name ?? app.platform,
       platform: app.platform,
       crashlyticsAppId: app['crashlytics-app-id'],
-      packages: stringList(app.packages, 'packages', where, { required: true }),
+      // A native iOS app's own code is its Swift and Objective-C files in the repo; packages name Kotlin code.
+      packages: stringList(app.packages, 'packages', where, { required: app.platform === 'android' }),
       ignoreFrames: stringList(app['ignore-frames'], 'ignore-frames', where),
       probes: stringList(app.probes, 'probes', where),
       releaseTags: app['release-tags'] === undefined ? DEFAULT_RELEASE_TAGS : stringList(app['release-tags'], 'release-tags', where),
@@ -109,19 +125,23 @@ export const listOptions = (app) => ({
   releaseTags: app.releaseTags,
 });
 
-// The Gradle task for the branch's tests, looked up across every app's modules.
-export function taskForAnyApp(config, testFiles) {
-  const tasks = [...new Set(config.apps.map((a) => taskFor(a, testFiles)).filter(Boolean))];
-  if (tasks.length > 1) fail(null, `the branch's tests match more than one module (${tasks.join(', ')}); pass --gradle-task`);
-  return tasks[0] ?? null;
+const moduleName = (m) => m.path || '.';
+
+// The module for the branch's tests, looked up across every app's modules.
+export function moduleForAnyApp(config, testFiles) {
+  const found = [...new Set(config.apps.map((a) => moduleFor(a, testFiles)).filter(Boolean))];
+  const runs = new Set(found.map((m) => m.gradleTask ?? `${m.path}:${m.xcode.scheme}`));
+  if (runs.size > 1) fail(null, `the branch's tests match more than one module (${found.map(moduleName).join(', ')}); keep them in one, or pass --gradle-task`);
+  return found[0] ?? null;
 }
 
-// The Gradle task for the module holding the branch's test files; the longest matching path wins.
-export function taskFor(app, testFiles) {
-  const owner = (file) => [...app.modules].sort((a, b) => b.path.length - a.path.length).find((m) => file === m.path || file.startsWith(`${m.path}/`));
+// The module holding the branch's test files; the longest matching path wins.
+export function moduleFor(app, testFiles) {
+  const holds = (m, file) => m.path === '' || file === m.path || file.startsWith(`${m.path}/`);
+  const owner = (file) => [...app.modules].sort((a, b) => b.path.length - a.path.length).find((m) => holds(m, file));
   const owners = [...new Set(testFiles.map(owner).filter(Boolean))];
-  if (owners.length > 1) fail(null, `the branch's tests are in two modules (${owners.map((m) => m.path).join(', ')}); pass --gradle-task`);
-  return owners[0]?.gradleTask ?? null;
+  if (owners.length > 1) fail(null, `the branch's tests are in two modules (${owners.map(moduleName).join(', ')}); keep them in one, or pass --gradle-task`);
+  return owners[0] ?? null;
 }
 
 export { ConfigError };

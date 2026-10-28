@@ -15,9 +15,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { branchDiff, git, mainCheckout, mergeBase, repoRoot, sha256 } from './git.mjs';
 import { decide, diffFacts, TEST_PATH } from './proof.mjs';
-import { writeReceipt } from './receipt.mjs';
-import { loadConfig, taskForAnyApp } from './config.mjs';
+import { dekaputDir, writeReceipt } from './receipt.mjs';
+import { loadConfig, moduleForAnyApp } from './config.mjs';
 import { gradleRun } from './runners/gradle.mjs';
+import { pickDestination, xcodeRun } from './runners/xcode.mjs';
 
 const WORKTREE_PREFIX = 'dekaput-';
 
@@ -58,13 +59,36 @@ function removeStaleWorktrees(root) {
   git(['worktree', 'prune'], root);
 }
 
+// The module's runner: its Gradle task, or its Xcode scheme on an iOS simulator.
+function runnerFor(module, filter) {
+  if (module.gradleTask) {
+    return {
+      task: module.gradleTask,
+      test: (dir) => gradleRun({ dir, task: module.gradleTask, filter }),
+      suite: (dir) => gradleRun({ dir, task: module.gradleTask, filter: null }),
+    };
+  }
+  const destination = module.xcode.destination ?? pickDestination();
+  // Build products stay inside the worktree, in .dekaput/ (a throwaway worktree takes them with it).
+  const run = (dir, only) => xcodeRun({ dir, module, filter: only, destination, derivedData: path.join(dekaputDir(dir), 'derived') });
+  return {
+    task: `xcodebuild test -scheme ${module.xcode.scheme}`,
+    test: (dir) => run(dir, filter),
+    // The suite is the test target that holds the test (the filter's first part), not UI tests or the whole scheme.
+    suite: (dir) => run(dir, filter.split('/')[0]),
+  };
+}
+
+// Files a run leaves behind: receipts and build products, Gradle's local.properties, Xcode's .swiftpm/.
+const LEFT_BY_RUNS = ['.dekaput/', 'local.properties', '.swiftpm/'];
+
 export function verify(opts, log = (line) => console.error(`dekaput: ${line}`)) {
   for (const name of ['issue', 'test', 'exception', 'anchor']) if (!opts[name]) fail(`--${name} is required`);
   if (!['frame', 'message'].includes(opts['anchor-kind'])) fail('--anchor-kind is frame or message');
 
   const root = repoRoot();
   const checkout = mainCheckout(root);
-  const dirty = git(['status', '--porcelain'], root).split('\n').filter((l) => l && !l.endsWith('.dekaput/') && !l.endsWith('local.properties'));
+  const dirty = git(['status', '--porcelain'], root).split('\n').filter((l) => l && !LEFT_BY_RUNS.some((f) => l.endsWith(f)));
   if (dirty.length) fail('commit the test (and the fix) first; the receipt is bound to HEAD');
   removeStaleWorktrees(root);
 
@@ -78,10 +102,11 @@ export function verify(opts, log = (line) => console.error(`dekaput: ${line}`)) 
 
   // The flag wins; otherwise the config's module that holds the branch's tests.
   const config = opts['gradle-task'] ? null : loadConfig(root);
-  const task = opts['gradle-task'] ?? (config && taskForAnyApp(config, testFiles));
-  if (!task) fail(`no module in ${config ? config.file : '.github/de-kaput.yml'} holds ${testFiles.join(', ')}; add it under modules, or pass --gradle-task`);
-  const runTest = (dir) => gradleRun({ dir, task, filter: opts.test });
-  const runSuite = (dir) => gradleRun({ dir, task, filter: null });
+  const module = opts['gradle-task'] ? { path: '', gradleTask: opts['gradle-task'] } : config && moduleForAnyApp(config, testFiles);
+  if (!module) fail(`no module in ${config ? config.file : '.github/de-kaput.yml'} holds ${testFiles.join(', ')}; add it under modules, or pass --gradle-task`);
+  const runner = runnerFor(module, opts.test);
+  const runTest = runner.test;
+  const runSuite = runner.suite;
 
   // The branch's tests, run on another commit in a throwaway worktree.
   const onCommit = (ref) => {
@@ -131,7 +156,7 @@ export function verify(opts, log = (line) => console.error(`dekaput: ${line}`)) 
     head,
     base,
     release: opts.release ?? null,
-    task,
+    task: runner.task,
     test: opts.test,
     exception: opts.exception,
     anchor,

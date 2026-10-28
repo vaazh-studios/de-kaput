@@ -1,0 +1,12 @@
+{
+  "issueId": "5e1f0a2b3c4d5e6f708192a3b4c5d6e7",
+  "platform": "IOS",
+  "errorType": "FATAL",
+  "title": "[ExampleApp] Parser.swift - specialized static Parser.count(of:)",
+  "subtitle": "EXC_BREAKPOINT (EXC_ARM_BREAKPOINT)",
+  "version": "1.0 (12)",
+  "device": "Apple (iPhone18,1)",
+  "os": "iOS (26.5.2)",
+  "exceptions": "",
+  "threads": "Thread:  (crashed)\nat closure #1 in closure #1 in _assertionFailure(_:_:file:line:flags:)\nat _assertionFailure(_:_:file:line:flags:)\nat specialized static Parser.count(of:) (Parser.swift:5)\nat WordList.refresh() (WordList.swift:41)\nat closure #1 in WordListView.body.getter (WordListView.swift:18)\nat static App.main()\nat main (App.swift:4)"
+}

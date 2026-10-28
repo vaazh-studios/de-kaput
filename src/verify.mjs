@@ -14,7 +14,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { branchDiff, git, mainCheckout, mergeBase, repoRoot, sha256 } from './git.mjs';
-import { decide, diffFacts, TEST_PATH } from './proof.mjs';
+import { decide, diffFacts, suiteAgainstBase, TEST_PATH } from './proof.mjs';
 import { dekaputDir, writeReceipt } from './receipt.mjs';
 import { loadConfig, moduleForAnyApp } from './config.mjs';
 import { gradleRun } from './runners/gradle.mjs';
@@ -82,6 +82,7 @@ function runnerFor(module, filter) {
 // Files a run leaves behind: receipts and build products, Gradle's local.properties, the Kotlin 2
 // compiler's .kotlin/, Xcode's .swiftpm/.
 const LEFT_BY_RUNS = ['.dekaput/', 'local.properties', '.kotlin/', '.swiftpm/'];
+const changesIn = (root) => git(['status', '--porcelain'], root).split('\n').filter((l) => l && !LEFT_BY_RUNS.some((f) => l.endsWith(f)));
 
 export function verify(opts, log = (line) => console.error(`dekaput: ${line}`)) {
   for (const name of ['issue', 'test', 'exception', 'anchor']) if (!opts[name]) fail(`--${name} is required`);
@@ -89,15 +90,14 @@ export function verify(opts, log = (line) => console.error(`dekaput: ${line}`)) 
 
   const root = repoRoot();
   const checkout = mainCheckout(root);
-  const dirty = git(['status', '--porcelain'], root).split('\n').filter((l) => l && !LEFT_BY_RUNS.some((f) => l.endsWith(f)));
-  if (dirty.length) fail('commit the test (and the fix) first; the receipt is bound to HEAD');
+  if (changesIn(root).length) fail('commit the test (and the fix) first; the receipt is bound to HEAD');
   removeStaleWorktrees(root);
 
   const head = git(['rev-parse', 'HEAD'], root);
   const base = git(['rev-parse', opts.base ?? mergeBase(root, head)], root);
   const diffBytes = branchDiff(root, base, head);
   const diff = diffBytes.toString('utf8');
-  const { testFiles } = diffFacts(diff);
+  const { testFiles, sourceFiles } = diffFacts(diff);
   if (testFiles.length === 0) fail('the branch adds or changes no test');
   const knownTestFiles = git(['ls-files'], root).split('\n').filter((f) => TEST_PATH.test(f));
 
@@ -109,8 +109,8 @@ export function verify(opts, log = (line) => console.error(`dekaput: ${line}`)) 
   const runTest = runner.test;
   const runSuite = runner.suite;
 
-  // The branch's tests, run on another commit in a throwaway worktree.
-  const onCommit = (ref) => {
+  // A run on another commit in a throwaway worktree: the branch's test there, or that commit's own suite.
+  const onCommit = (ref, { run = runTest, branchTests = true } = {}) => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), WORKTREE_PREFIX));
     try {
       git(['worktree', 'add', '--detach', '--quiet', dir, ref], root);
@@ -119,12 +119,12 @@ export function verify(opts, log = (line) => console.error(`dekaput: ${line}`)) 
       fail(`could not check out ${ref}: ${error.message.split('\n')[0]}`);
     }
     try {
-      for (const file of testFiles) {
+      for (const file of branchTests ? testFiles : []) {
         fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
         fs.writeFileSync(path.join(dir, file), execFileSync('git', ['show', `${head}:${file}`], { cwd: root }));
       }
       withLocalProperties(checkout, dir);
-      return runTest(dir);
+      return run(dir);
     } finally {
       git(['worktree', 'remove', '--force', dir], root);
     }
@@ -139,17 +139,32 @@ export function verify(opts, log = (line) => console.error(`dekaput: ${line}`)) 
   if (baseRun.status === 'pass' && opts.release) {
     log(`the base passes; running the test on the release ${opts.release}`);
     tagRun = onCommit(opts.release);
+  } else if (baseRun.status === 'fail' && sourceFiles.length === 0) {
+    log('the test fails on the base; with no fix in source yet, there is nothing more to run');
+  } else if (baseRun.noCrashLog) {
+    log('the test crashes on the base, but there is no crash log to check it against; nothing more to run');
   } else if (baseRun.status === 'fail') {
     log('running the test on HEAD, then the whole suite');
     withLocalProperties(checkout, root);
     headRun = runTest(root);
     suiteRun = headRun.status === 'pass' ? runSuite(root) : undefined;
+    if (suiteRun?.status === 'fail') {
+      log('part of the suite fails with the fix; running the suite on the base to see what already failed there');
+      suiteRun = suiteAgainstBase(suiteRun, onCommit(base, { run: runSuite, branchTests: false }));
+    }
   }
+  // The receipt is bound to HEAD: a commit or an edit made while the tests ran is not what they tested.
+  if (git(['rev-parse', 'HEAD'], root) !== head || changesIn(root).length) fail('the worktree changed while verify ran (a commit or an edit); run verify again');
 
   const verdict = decide({ exception: opts.exception, anchor, diff, baseRun, headRun, suiteRun, tagRun, knownTestFiles });
-  const brief = (run) => run && { status: run.status, failureType: run.failureType, stack: run.stack?.split('\n').slice(0, 4).join('\n') };
+  const brief = (run) => run && {
+    status: run.status,
+    failureType: run.failureType,
+    stack: run.stack?.split('\n').slice(0, 4).join('\n'),
+    ...(run.alreadyFailing?.length ? { alreadyFailing: run.alreadyFailing } : {}),
+  };
   const runs = { baseRun: brief(baseRun), tagRun: brief(tagRun), headRun: brief(headRun), suiteRun: brief(suiteRun) };
-  if (!verdict.ok) return { ok: false, reason: verdict.reason, runs };
+  if (!verdict.ok) return { ok: false, reproduced: verdict.reproduced ?? false, reason: verdict.reason, runs };
 
   const receipt = {
     issue: opts.issue,

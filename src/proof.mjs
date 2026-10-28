@@ -11,7 +11,9 @@
 //
 // Proven: the new test fails on the branch base with the crash's exception,
 // thrown from app code, reaching the crash's anchor (a frame, or the app class
-// the crash message names); it passes on HEAD; the module's suite is green.
+// the crash message names); it passes on HEAD; no test in the module's suite
+// that passes on the base fails with the fix (suiteAgainstBase).
+// Reproduced: the test fails on the base with the crash, and the branch has no fix yet.
 // Fixed on main: the test passes on base but crashes on the release tag.
 //
 // The gate guards against honest mistakes (a test that does not reproduce the
@@ -142,6 +144,9 @@ const framesOf = (run) => (run.frames ? { message: run.message ?? '', frames: ru
 function notTheCrash(run, { exception, anchor, testFiles, declaredTests = [], knownTestFiles }) {
   if (run.status === 'error') return 'fails before for another reason: the test did not compile or did not run';
   if (run.status === 'pass') return 'passes before the fix: the test does not reproduce the crash';
+  if (run.noCrashLog) {
+    return 'crashes, but macOS kept no crash log to check the crash against (its crash reporter rate-limits logs after many crashes); run verify again in a few minutes';
+  }
   if (![run.failureType, run.signal].some((t) => t && simpleName(t) === simpleName(exception))) {
     return `fails before with ${run.failureType ?? 'an unknown error'}, not the crash's ${exception}`;
   }
@@ -157,6 +162,17 @@ function notTheCrash(run, { exception, anchor, testFiles, declaredTests = [], kn
     return `never reached app code: the failure's ${where} do not include ${anchor.text}`;
   }
   return null;
+}
+
+// The suite with the fix, against the same suite on the base: a test that already fails there is not
+// the fix's doing. Only a test that passes on the base and fails with the fix counts against it.
+export function suiteAgainstBase(headSuite, baseSuite) {
+  const failing = headSuite.failedTests ?? [];
+  if (headSuite.status !== 'fail' || failing.length === 0 || !['pass', 'fail'].includes(baseSuite?.status)) return headSuite;
+  const before = new Set(baseSuite.failedTests ?? []);
+  const newFailures = failing.filter((t) => !before.has(t));
+  const alreadyFailing = failing.filter((t) => before.has(t));
+  return newFailures.length ? { ...headSuite, newFailures, alreadyFailing } : { status: 'pass', ran: headSuite.ran, alreadyFailing };
 }
 
 export function decide({ exception, anchor, diff, baseRun, headRun, suiteRun, tagRun, knownTestFiles = [] }) {
@@ -177,9 +193,14 @@ export function decide({ exception, anchor, diff, baseRun, headRun, suiteRun, ta
     return onTag ? { ok: false, reason: `on the release tag the test ${onTag}` } : { ok: true, result: 'fixed-on-main' };
   }
   if (onBase) return { ok: false, reason: onBase };
-  if (facts.sourceFiles.length === 0) return { ok: false, reason: 'no fix in source: the branch changes only tests' };
+  if (facts.sourceFiles.length === 0) {
+    return { ok: false, reproduced: true, reason: 'reproduced, no fix in source yet: the test fails on the base with the crash; write the fix, commit it, and run verify again' };
+  }
   if (headRun?.status !== 'pass') return { ok: false, reason: 'the test still fails with the fix' };
-  if (suiteRun?.status !== 'pass') return { ok: false, reason: "the module's full suite is not green with the fix" };
+  if (suiteRun?.status !== 'pass') {
+    const broken = suiteRun?.newFailures?.length ? `: ${suiteRun.newFailures.slice(0, 5).join(', ')} pass on the base and fail with the fix` : '';
+    return { ok: false, reason: `the module's full suite is not green with the fix${broken}` };
+  }
   return { ok: true, result: 'proven' };
 }
 
@@ -187,15 +208,18 @@ const unescapeXml = (s) =>
   s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'")
     .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n))).replace(/&amp;/g, '&');
 
-// Gradle's JUnit XML reports for one filtered run.
+// Gradle's JUnit XML reports for one run: the first failure, and every failing test by name.
 export function parseJUnit(xmlFiles) {
   const ran = new Set();
+  const failedTests = [];
   let failure = null;
   for (const xml of xmlFiles) {
     for (const [, attrs, body = ''] of xml.matchAll(/<testcase\b([^>]*?)(?:\/>|>([\s\S]*?)<\/testcase>)/g)) {
       if (/<skipped\b/.test(body)) continue;
-      ran.add(unescapeXml(/classname="([^"]*)"/.exec(attrs)?.[1] ?? ''));
+      const className = unescapeXml(/classname="([^"]*)"/.exec(attrs)?.[1] ?? '');
+      ran.add(className);
       const found = /<(failure|error)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/.exec(body);
+      if (found) failedTests.push(`${className}.${unescapeXml(/\bname="([^"]*)"/.exec(attrs)?.[1] ?? '')}`);
       if (!found || failure) continue;
       const attr = (name) => new RegExp(`${name}="([^"]*)"`).exec(found[2])?.[1];
       failure = {
@@ -206,7 +230,7 @@ export function parseJUnit(xmlFiles) {
     }
   }
   if (ran.size === 0) return { status: 'error' };
-  return { ...(failure ?? { status: 'pass' }), ran: [...ran] };
+  return { ...(failure ?? { status: 'pass' }), ran: [...ran], failedTests };
 }
 
 // vitest --reporter=json output.

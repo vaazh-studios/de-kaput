@@ -6,7 +6,7 @@ It never fixes blind: no pull request without a test that fails with the crash's
 
 > **Status: early.** One Android crash has gone end to end, from Crashlytics to a pull request with its test. The Xcode runner has proven a crash in a Swift package and a UIKit crash in an app with app-hosted tests.
 >
-> See it on two demo forks, each with a crash planted on purpose: Google's [architecture-samples](https://github.com/vaazh-studios/de-kaput-demo-architecture-samples/pull/1) (a Kotlin coroutine crash) and [NetNewsWire](https://github.com/vaazh-studios/de-kaput-demo-netnewswire/pull/1) (a Swift trap in its feed parser).
+> See it on two demo forks, each with crashes planted on purpose: Google's [architecture-samples](https://github.com/vaazh-studios/de-kaput-demo-architecture-samples/pull/1) (a Kotlin coroutine crash) and [NetNewsWire](https://github.com/vaazh-studios/de-kaput-demo-netnewswire/pull/1) (a Swift trap in its feed parser). On a harder crash in each, a fresh agent that was given only this runbook, the repo and the crash report found the cause and opened the PR: a sort comparator that breaks Java's contract, which never appears in the stack ([architecture-samples#2](https://github.com/vaazh-studios/de-kaput-demo-architecture-samples/pull/2)), and a `Data` slice indexed from 0 two commits after it was made ([NetNewsWire#2](https://github.com/vaazh-studios/de-kaput-demo-netnewswire/pull/2)).
 
 ## How it works
 
@@ -17,7 +17,7 @@ It never fixes blind: no pull request without a test that fails with the crash's
 3. **For each crash in the queue, one at a time**, like Dependabot does for each dependency:
    - it finds the commit that crash was built from: the git revision Crashlytics recorded for the build, or your release tag;
    - the agent checks out a new git worktree on a fresh branch from your default branch, so your own checkout is never touched, and writes a test that reproduces the crash, then fixes it;
-   - `dekaput verify` proves it in throwaway worktrees: the test fails on your default branch with the crash's exception, reaching the crash's code, and passes with the fix, with the module's tests green. If the test already passes on your default branch, it runs on the crash's commit instead; crashing there means the crash is already fixed and not yet shipped;
+   - `dekaput verify` proves it in throwaway worktrees: the test fails on your default branch with the crash's exception, reaching the crash's code, and passes with the fix, and no test that passes on your default branch fails with it. If the test already passes on your default branch, it runs on the crash's commit instead; crashing there means the crash is already fixed and not yet shipped;
    - `dekaput open-pr` refuses without that proof, then opens a pull request for that crash with the test, the fix and the proof.
    A crash no test can reach gets a note on the Crashlytics issue instead, and the run moves on.
 4. You get **one pull request per crash**, each reviewed and merged on its own. `--max-prs` caps how many are open at once.

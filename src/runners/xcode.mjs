@@ -57,9 +57,10 @@ export function ownImages(productsDir) {
   return names;
 }
 
-// The test cases a result bundle ran (by suite, as classes) and the first that failed.
+// The test cases a result bundle ran (by suite, as classes), the first that failed, and every failing test.
 export function parseTestResults(tree) {
   const ran = new Set();
+  const failedTests = [];
   let failed = null;
   const walk = (node, suite) => {
     if (node.nodeType !== 'Test Case') {
@@ -69,13 +70,14 @@ export function parseTestResults(tree) {
     if (node.result === 'Skipped') return;
     // A Swift Testing function outside any suite ran by its own name.
     ran.add(suite ?? methodOf(node.name));
+    if (node.result === 'Failed') failedTests.push(node.nodeIdentifier ?? node.name);
     if (node.result === 'Failed' && !failed) {
       const messages = (node.children ?? []).filter((c) => c.nodeType === 'Failure Message').map((c) => c.name);
       failed = { id: node.nodeIdentifier, name: node.name, messages };
     }
   };
   for (const node of tree.testNodes ?? []) walk(node, null);
-  return { ran: [...ran], failed };
+  return { ran: [...ran], failed, failedTests };
 }
 
 const frameOf = (images) => (f) => ({
@@ -85,9 +87,15 @@ const frameOf = (images) => (f) => ({
   image: images[f.imageIndex]?.name ?? null,
 });
 
-// A crash log (.ips: a JSON header line, then the JSON report).
+// A crash log (.ips: a JSON header line, then the JSON report), or null for anything else. After many
+// crashes macOS rate-limits its crash reporter, and Xcode attaches a one-line note in place of the log.
 export function parseCrashLog(text) {
-  const report = JSON.parse(text.slice(text.indexOf('\n') + 1));
+  let report;
+  try {
+    report = JSON.parse(text.slice(text.indexOf('\n') + 1));
+  } catch {
+    return null;
+  }
   const toFrame = frameOf(report.usedImages ?? []);
   // An uncaught NSException's throw stack is lastExceptionBacktrace; a device's log also names it in the
   // application-specific info, a simulator's does not (uncaughtIn reads the name from the run's output).
@@ -193,9 +201,8 @@ function failureOf(bundle, failed, output, since, own) {
   const crashed = /^(Crash: |Test crashed)/.test(message);
   const { crashLog, description } = attachmentsOf(bundle, failed.id);
   const mark = (failure) => ({ ...failure, frames: failure.frames.map((f) => ({ ...f, own: own.has(f.image) })) });
-  const report = crashLog ?? (crashed ? crashReportFor(failed.name, since) : null);
-  if (report) {
-    const crash = parseCrashLog(report);
+  const crash = (crashLog && parseCrashLog(crashLog)) ?? (crashed ? parseCrashLog(crashReportFor(failed.name, since) ?? '') : null);
+  if (crash) {
     const named = crash.thrown && /^(EXC_|SIG)/.test(crash.type ?? '') ? uncaughtIn(output, failed.name) : null;
     return named ? crashFailure(mark({ ...crash, ...named })) : crashFailure(mark(crash), fatalMessage(output, failed.name));
   }
@@ -203,7 +210,8 @@ function failureOf(bundle, failed, output, since, own) {
   if (caught) return caughtFailure(mark(caught));
   if (crashed) {
     const signal = SIGNALS[/signal (\w+)/.exec(message)?.[1]?.toLowerCase()] ?? null;
-    return { failureType: signal ?? 'crash', signal, message, frames: [], stack: `${message}\n(no crash log for it, in the result bundle or the crash reporter's folder)` };
+    const why = crashLog ? crashLog.trim().split('\n')[0] : "no crash log for it, in the result bundle or the crash reporter's folder";
+    return { failureType: signal ?? 'crash', signal, message, frames: [], noCrashLog: true, stack: `${message}\n(${why})` };
   }
   return { failureType: 'a test assertion', signal: null, message, frames: [], stack: message };
 }
@@ -233,14 +241,14 @@ export function xcodeRun({ dir, module, filter, destination, derivedData }) {
     } catch {
       tree = null;
     }
-    const { ran, failed } = tree ? parseTestResults(tree) : { ran: [], failed: null };
+    const { ran, failed, failedTests } = tree ? parseTestResults(tree) : { ran: [], failed: null, failedTests: [] };
     if (ran.length === 0) {
       const errors = output.split('\n').filter((l) => / error: /.test(l));
       console.error((errors.length ? errors.slice(0, 20) : output.trim().split('\n').slice(-20)).map((l) => `xcodebuild: ${l}`).join('\n'));
       return { status: 'error' };
     }
-    if (!failed) return { status: run.status === 0 ? 'pass' : 'error', ran };
-    return { status: 'fail', ran, ...failureOf(bundle, failed, output, since, ownImages(path.join(derivedData, 'Build', 'Products'))) };
+    if (!failed) return { status: run.status === 0 ? 'pass' : 'error', ran, failedTests };
+    return { status: 'fail', ran, failedTests, ...failureOf(bundle, failed, output, since, ownImages(path.join(derivedData, 'Build', 'Products'))) };
   } finally {
     fs.rmSync(out, { recursive: true, force: true });
   }

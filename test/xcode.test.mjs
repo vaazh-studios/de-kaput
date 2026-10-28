@@ -25,17 +25,18 @@ const tree = (...cases) => ({
 });
 
 test('the result bundle names the classes that ran and the first test that failed', () => {
-  const { ran, failed } = parseTestResults(tree(
+  const { ran, failed, failedTests } = parseTestResults(tree(
     testCase('testPasses', 'Passed'),
     testCase('testCountOfNil', 'Failed', 'Crash: xctest at static xctest.main()'),
     testCase('testRaise', 'Failed', 'planted (NSInvalidArgumentException)'),
   ));
   assert.deepEqual(ran, ['WordbookTests']);
   assert.deepEqual(failed, { id: 'WordbookTests/testCountOfNil()', name: 'testCountOfNil()', messages: ['Crash: xctest at static xctest.main()'] });
+  assert.deepEqual(failedTests, ['WordbookTests/testCountOfNil()', 'WordbookTests/testRaise()']);
 });
 
 test('skipped tests did not run', () => {
-  assert.deepEqual(parseTestResults(tree(testCase('testSkipped', 'Skipped'))), { ran: [], failed: null });
+  assert.deepEqual(parseTestResults(tree(testCase('testSkipped', 'Skipped'))), { ran: [], failed: null, failedTests: [] });
 });
 
 test('a Swift trap: EXC_BREAKPOINT and SIGTRAP, the frames with their files', () => {
@@ -170,4 +171,9 @@ test("an uncaught NSException in a simulator: the throw stack from the crash log
   assert.deepEqual(uncaughtIn("*** Terminating app due to uncaught exception 'NSRangeException', reason: 'index 3 beyond bounds'", 'testA()'), { type: 'NSRangeException', message: 'index 3 beyond bounds' });
   const failure = crashFailure({ ...crash, ...uncaughtIn(output, 'raises()') });
   assert.equal(failure.stack.split('\n').slice(0, 2).join('\n'), 'NSInvalidArgumentException (SIGABRT): planted\n\tat static Parser.raise() (Parser.swift:14)');
+});
+
+test("a rate-limited crash reporter's note in place of a crash log is no crash log", () => {
+  assert.equal(parseCrashLog('CrashReporter did not produce detailed crashlog, most likely because of rate limiting.'), null);
+  assert.equal(parseCrashLog(''), null);
 });

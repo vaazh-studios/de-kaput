@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { decide, diffFacts, parseJUnit, parseVitest } from '../src/proof.mjs';
+import { decide, diffFacts, parseJUnit, parseVitest, suiteAgainstBase } from '../src/proof.mjs';
 
 const exception = 'java.lang.IllegalArgumentException';
 const frameAnchor = { kind: 'frame', text: 'com.example.app.data.Parser.parse' };
@@ -126,8 +126,9 @@ test('JUnit XML gives the failure type and stack of the matching test', () => {
     failureType: 'java.lang.IllegalArgumentException',
     stack: 'java.lang.IllegalArgumentException: bad\n\tat com.x.Parser.parse(Parser.kt:12)',
     ran: ['com.x.ParserTest'],
+    failedTests: ['com.x.ParserTest.a crash input parses'],
   });
-  assert.deepEqual(parseJUnit(['<testsuite><testcase name="a" classname="b"/></testsuite>']), { status: 'pass', ran: ['b'] });
+  assert.deepEqual(parseJUnit(['<testsuite><testcase name="a" classname="b"/></testsuite>']), { status: 'pass', ran: ['b'], failedTests: [] });
   assert.deepEqual(parseJUnit([]), { status: 'error' });
 });
 
@@ -302,4 +303,33 @@ test('Swift Testing: a free @Test function is the branch\'s test, and a crash it
   const run = { ...trap(appFrame, ownFrame), ran: ['countOfNilIsZero'] };
   assert.equal(decide({ ...swift, diff: freeDiff, baseRun: run, headRun: pass, suiteRun: pass }).ok, true);
   assert.match(decide({ ...swift, diff: freeDiff, baseRun: { ...trap(ownFrame), ran: ['countOfNilIsZero'] } }).reason, /thrown by the test itself/);
+});
+
+test('a test that reproduces the crash before any fix is "reproduced", not a rejection', () => {
+  const r = decide({ ...base, diff: testOnlyDiff, baseRun: crashed });
+  assert.equal(r.ok, false);
+  assert.equal(r.reproduced, true);
+  assert.match(r.reason, /reproduced, no fix in source yet/);
+  assert.equal(decide({ ...base, diff: testOnlyDiff, baseRun: pass }).reproduced, undefined);
+});
+
+test('the suite with the fix is held only to tests that pass on the base', () => {
+  const headSuite = { status: 'fail', ran: ['A', 'B'], failedTests: ['A.encoding', 'B.cjk'] };
+  const already = suiteAgainstBase(headSuite, { status: 'fail', failedTests: ['A.encoding', 'B.cjk', 'C.other'] });
+  assert.deepEqual(already, { status: 'pass', ran: ['A', 'B'], alreadyFailing: ['A.encoding', 'B.cjk'] });
+  const broken = suiteAgainstBase(headSuite, { status: 'fail', failedTests: ['A.encoding'] });
+  assert.equal(broken.status, 'fail');
+  assert.deepEqual(broken.newFailures, ['B.cjk']);
+  assert.match(decide({ ...base, baseRun: crashed, headRun: pass, suiteRun: broken }).reason, /B\.cjk pass on the base and fail with the fix/);
+  assert.equal(decide({ ...base, baseRun: crashed, headRun: pass, suiteRun: already }).ok, true);
+  // A base suite that did not build, or a failing suite with no names, cannot excuse anything.
+  assert.equal(suiteAgainstBase(headSuite, { status: 'error' }).status, 'fail');
+  assert.equal(suiteAgainstBase({ status: 'fail', failedTests: [] }, { status: 'fail', failedTests: [] }).status, 'fail');
+});
+
+test('a crash with no crash log to check is named for what it is, not as never reaching app code', () => {
+  const run = { status: 'fail', failureType: 'SIGTRAP', signal: 'SIGTRAP', message: 'Test crashed with signal trap.', frames: [], noCrashLog: true, stack: 'x', ran: ['ParserTests'] };
+  const r = decide({ ...swift, exception: 'SIGTRAP', baseRun: run });
+  assert.match(r.reason, /kept no crash log/);
+  assert.match(r.reason, /run verify again/);
 });

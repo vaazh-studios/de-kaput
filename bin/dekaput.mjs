@@ -74,8 +74,9 @@ try {
   if (command === 'list') list(args);
   else if (command === 'verify') {
     const result = verify(parseArgs({ args, options: VERIFY_OPTIONS }).values);
-    console.log(JSON.stringify(result.ok ? result.receipt : { ok: false, reason: result.reason, runs: result.runs }, null, 2));
-    process.exitCode = result.ok ? 0 : 1;
+    console.log(JSON.stringify(result.ok ? result.receipt : { ok: false, reproduced: result.reproduced, reason: result.reason, runs: result.runs }, null, 2));
+    // 3: reproduced, the fix is still to write; 1: rejected.
+    process.exitCode = result.ok ? 0 : result.reproduced ? 3 : 1;
   } else if (command === 'open-pr') console.log(openPr(parseArgs({ args, options: OPEN_PR_OPTIONS }).values));
   else {
     console.log(USAGE);

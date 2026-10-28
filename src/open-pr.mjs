@@ -30,6 +30,15 @@ const anchorPhrase = (anchor) => {
   return `with the message text "${anchor.text}"`;
 };
 
+// Tests that already fail on the base are named, not hidden: the fix is held only to the ones that pass there.
+const suiteState = (suiteRun) => {
+  const already = suiteRun?.alreadyFailing ?? [];
+  if (suiteRun?.status !== 'pass') return `the suite ${suiteRun?.status ?? 'did not run'}`;
+  if (!already.length) return 'the whole suite is green';
+  const named = already.slice(0, 5).map((t) => `\`${t}\``).join(', ') + (already.length > 5 ? `, and ${already.length - 5} more` : '');
+  return `no test that passes on the base fails with the fix (${already.length} already ${already.length === 1 ? 'fails' : 'fail'} there: ${named})`;
+};
+
 export function proofSection(receipt, also = []) {
   const { runs } = receipt;
   const lines = [
@@ -37,7 +46,7 @@ export function proofSection(receipt, also = []) {
     '',
     receipt.result === 'fixed-on-main'
       ? `This crash is already fixed on \`${receipt.base.slice(0, 8)}\` and not in the release \`${receipt.release}\`. The test crashes on the release and passes here, so it keeps the crash fixed.`
-      : `The test fails on \`${receipt.base.slice(0, 8)}\` with the crash's exception and passes with the fix; the whole suite is green.`,
+      : `The test fails on \`${receipt.base.slice(0, 8)}\` with the crash's exception and passes with the fix; ${suiteState(runs.suiteRun)}.`,
     '',
     `- Test: \`${receipt.test}\` (\`${receipt.task}\`)`,
     `- Crash: \`${receipt.exception}\`, ${anchorPhrase(receipt.anchor)}`,
@@ -46,7 +55,7 @@ export function proofSection(receipt, also = []) {
   ];
   if (runs.tagRun) lines.push('On the release (must crash):', fence(runs.tagRun.stack), '');
   if (runs.baseRun?.status === 'fail') lines.push('On the base (must crash):', fence(runs.baseRun.stack), '');
-  if (receipt.result === 'proven') lines.push(`With the fix the test ${runs.headRun?.status === 'pass' ? 'passes' : runs.headRun?.status}, and the whole suite ${runs.suiteRun?.status === 'pass' ? 'is green' : runs.suiteRun?.status}.`);
+  if (receipt.result === 'proven') lines.push(`With the fix the test ${runs.headRun?.status === 'pass' ? 'passes' : runs.headRun?.status}, and ${suiteState(runs.suiteRun)}.`);
   else lines.push('On the base the test passes.');
   lines.push('', `Crashlytics issue ${[receipt.issue, ...also].join(', ')}. Receipt \`${receipt.head.slice(0, 8)}\`, diff sha256 \`${receipt.diffSha256.slice(0, 16)}\`.`);
   return lines.join('\n');

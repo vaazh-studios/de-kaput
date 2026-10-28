@@ -44,7 +44,9 @@ Write the test against the code as it is on the default branch. It calls the cod
 
 On iOS, write an XCTest or a Swift Testing `@Test` in the app's unit test target (its `*Tests/` folder) and let the crash happen: the Swift trap or exception crashes the test, and its crash log is the evidence. In an Xcode project that lists its files in `project.pbxproj`, add the test class to the end of an existing test file in that target, because `verify` rejects edits to project files. A Swift package or an Xcode 16 synchronized folder can take a new file; name it after its test class. Do not use `XCTExpectFailure`, `withKnownIssue` or `XCTSkip`.
 
-Budget: 3 ideas and 5 test attempts. If none reproduces the crash, add a `de-kaput:` note saying what you tried and what data is missing, remove the worktree, and go to the next crash.
+When the crash happens in a coroutine the test does not own (`viewModelScope`, `stateIn`), trigger it inside `runTest` and make the assertions after `runTest` returns. `runTest` rethrows the coroutine's exception only when it returns, so an assertion that fails first hides the crash, and `verify` rejects the test for failing with the wrong exception.
+
+Budget: 3 ideas and 5 test attempts; an attempt is a test you give to `verify`. Exploring outside the tests does not count: a REPL, `jshell`, a script you never commit. If none reproduces the crash, add a `de-kaput:` note saying what you tried and what data is missing, remove the worktree, and go to the next crash.
 
 ## 4. Prove it
 
@@ -56,9 +58,11 @@ npx @vaazh-studios/de-kaput verify --issue <id> --test '<filter>' \
 
 The Gradle task comes from the config's module that holds the new test; pass `--gradle-task <:module:testTask>` when it has none. For an Xcode module, `--test` is `Target/Class/method` (Swift Testing: `Target/Suite/function()`, or `Target/function()` outside a suite), `--exception` is the name `list` gave (`EXC_BREAKPOINT`, `EXC_BAD_ACCESS`, `SIGABRT` or an NSException name such as `NSRangeException`), and the module's suite is the test's own target. The first build in a fresh worktree can take a long time; run it in the background or with a long timeout.
 
-- **Fails on the base, and the fix is still to write:** fix the code (follow the repo's rules), commit, run `verify` again. It must report `proven`.
+- **`reproduced` (exit code 3):** the test fails on the base with the crash and the branch has no fix yet. This is the goal of step 3, not a used-up attempt. Fix the code (follow the repo's rules), commit, run `verify` again. It must report `proven`.
 - **Passes on the base and crashes on the release:** `fixed-on-main`. The crash is already fixed and not released yet. No fix is needed; the PR adds the test so it stays fixed.
-- **Rejected:** read the reason. Fix the test or the fix, never the rule. Back to the budget in step 3.
+- **Rejected (exit code 1):** read the reason. Fix the test or the fix, never the rule. Back to the budget in step 3.
+
+With the fix, no test in the module's suite may go from passing on the base to failing. When part of the suite fails, `verify` runs it on the base too: tests that already fail there are named in the proof, not held against the fix. Do not commit or edit anything while `verify` runs; it checks the worktree again at the end.
 
 ## 5. Open the pull request
 

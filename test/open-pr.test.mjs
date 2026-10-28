@@ -23,3 +23,9 @@ test('a message anchor that is a class says so', () => {
   const md = proofSection({ ...base, result: 'proven', anchor: { kind: 'message', text: 'com.example.app.ui.HomeTab' }, runs: { baseRun: { status: 'fail' }, headRun: { status: 'pass' }, suiteRun: { status: 'pass' } } });
   assert.match(md, /with the class `com\.example\.app\.ui\.HomeTab` in its message/);
 });
+
+test('tests that already fail on the base are named in the proof', () => {
+  const md = proofSection({ ...base, result: 'proven', anchor: { kind: 'frame', text: 'static Parser.parse(_:)' }, runs: { baseRun: { status: 'fail', stack: 'EXC_BREAKPOINT' }, headRun: { status: 'pass' }, suiteRun: { status: 'pass', alreadyFailing: ['RSSParserTests/gb2312()', 'RSSParserTests/cjk()'] } } });
+  assert.match(md, /no test that passes on the base fails with the fix \(2 already fail there: `RSSParserTests\/gb2312\(\)`, `RSSParserTests\/cjk\(\)`\)/);
+  assert.doesNotMatch(md, /whole suite is green/);
+});

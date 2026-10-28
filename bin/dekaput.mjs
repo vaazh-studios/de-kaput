@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import { parseArgs } from 'node:util';
 import { nativeFileFinder, sourceSetFinder } from '../src/classify.mjs';
 import { appFor, listOptions, loadConfig } from '../src/config.mjs';
-import { git, repoRoot } from '../src/git.mjs';
+import { git, originRepo, repoRoot } from '../src/git.mjs';
 import { formatList, listCrashes, PR_LABEL } from '../src/list.mjs';
 import { parseMapping } from '../src/mapping.mjs';
 import { OPEN_PR_OPTIONS, openPr } from '../src/open-pr.mjs';
@@ -51,7 +51,7 @@ function list(args) {
   const events = positionals.map((f) => JSON.parse(fs.readFileSync(f, 'utf8')));
   const prs = values.prs
     ? JSON.parse(fs.readFileSync(values.prs, 'utf8'))
-    : JSON.parse(execFileSync('gh', ['pr', 'list', '--label', PR_LABEL, '--state', 'all', '--limit', '200', '--json', 'title,body,state,url'], { cwd: root, encoding: 'utf8' }));
+    : JSON.parse(execFileSync('gh', ['pr', 'list', '--repo', originRepo(root), '--label', PR_LABEL, '--state', 'all', '--limit', '200', '--json', 'title,body,state,url'], { cwd: root, encoding: 'utf8' }));
   const result = listCrashes(events, {
     prs,
     tags: git(['tag'], root).split('\n').filter(Boolean),

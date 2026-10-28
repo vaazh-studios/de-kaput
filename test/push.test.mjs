@@ -37,3 +37,11 @@ test('the fix branch is pushed to its own branch, never to the default branch', 
 test('pushing the default branch itself is refused', () => {
   assert.throws(() => pushBranch('/nowhere', 'main', 'main'), /refusing to push the default branch/);
 });
+
+test("origin's GitHub repo is read from its URL, so a fork's PR never goes upstream", async () => {
+  const { githubRepoOf } = await import('../src/git.mjs');
+  assert.equal(githubRepoOf('https://github.com/vaazh-studios/de-kaput-demo-netnewswire.git'), 'vaazh-studios/de-kaput-demo-netnewswire');
+  assert.equal(githubRepoOf('git@github.com:vaazh-studios/de-kaput.git'), 'vaazh-studios/de-kaput');
+  assert.equal(githubRepoOf('ssh://git@github.com/octo/app.name'), 'octo/app.name');
+  assert.throws(() => githubRepoOf('/tmp/origin.git'), /not a GitHub repository/);
+});

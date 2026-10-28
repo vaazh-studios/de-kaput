@@ -24,6 +24,16 @@ export function defaultBranch(root) {
   }
 }
 
+// A GitHub remote URL as owner/name: https://github.com/o/n(.git), git@github.com:o/n(.git), ssh://git@github.com/o/n.
+export function githubRepoOf(url) {
+  const match = /github\.com[:/]([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/.exec(url);
+  if (!match) throw new Error(`origin is not a GitHub repository: ${url}`);
+  return match[1];
+}
+
+// origin's GitHub repo. Every gh call names it: in a fork, gh would otherwise pick the upstream repo.
+export const originRepo = (root) => githubRepoOf(git(['remote', 'get-url', 'origin'], root));
+
 export const mergeBase = (root, head = 'HEAD') => git(['merge-base', head, defaultBranch(root)], root);
 
 // The branch's diff exactly as verify hashed it into the receipt.

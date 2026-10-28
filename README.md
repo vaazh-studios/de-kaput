@@ -9,7 +9,7 @@ It never fixes blind: no pull request without a test that fails with the crash's
 ## How it works
 
 ```mermaid
-flowchart LR
+flowchart TB
     subgraph pick ["1. Pick"]
         A([Latest release<br/>top crashes]) --> B[dekaput list]
     end

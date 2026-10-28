@@ -8,11 +8,12 @@ import { parseArgs } from 'node:util';
 import { sourceSetFinder } from '../src/classify.mjs';
 import { git, repoRoot } from '../src/git.mjs';
 import { formatList, listCrashes, PR_LABEL } from '../src/list.mjs';
+import { parseMapping } from '../src/mapping.mjs';
 import { OPEN_PR_OPTIONS, openPr } from '../src/open-pr.mjs';
 import { verify, VERIFY_OPTIONS } from '../src/verify.mjs';
 
 const USAGE = `usage:
-  dekaput list --app-package <pkg> [--ignore-frame <pkg>] [--probe <regex>] [--json] <event files>
+  dekaput list --app-package <pkg> [--ignore-frame <pkg>] [--probe <regex>] [--mapping <mapping.txt>] [--json] <event files>
   dekaput verify --issue <id> --gradle-task <:module:task> --test <filter> --exception <class>
                  --anchor <frame or class> [--anchor-kind frame|message] [--release <ref>]
   dekaput open-pr --title <title> --body-file <file> [--also <issue id>]`;
@@ -26,6 +27,8 @@ function list(args) {
       'ignore-frame': { type: 'string', multiple: true, default: [] },
       probe: { type: 'string', multiple: true, default: [] },
       prs: { type: 'string' },
+      // The release build's R8 mapping.txt, to read renamed class names in crash messages.
+      mapping: { type: 'string' },
       json: { type: 'boolean', default: false },
     },
   });
@@ -39,6 +42,7 @@ function list(args) {
   const result = listCrashes(events, {
     prs,
     tags: git(['tag'], root).split('\n').filter(Boolean),
+    mapping: values.mapping ? parseMapping(fs.readFileSync(values.mapping, 'utf8')) : null,
     sourceSetOf: sourceSetFinder(git(['ls-files', '*.kt', '*.java'], root).split('\n')),
     options: {
       appPackages: values['app-package'],

@@ -8,7 +8,7 @@ You need: the Firebase MCP server, `gh` signed in, `git`, Node 20+, and the app'
 
 With the Firebase MCP server, for the app id you were given:
 
-1. `crashlytics_get_report` with `report: "topVersions"` to find the latest version's display name.
+1. Find the **latest release**: the newest version that was actually released (it has a release tag, or you were told which). `crashlytics_get_report` with `report: "topVersions"` lists versions by event count, not by age, and includes internal builds, so do not take its first row.
 2. `crashlytics_get_report` with `report: "topIssues"`, `issueErrorTypes: ["FATAL"]`, the latest version in `versionDisplayNames`, `pageSize: 10`.
 3. For each issue: `crashlytics_batch_get_events` on its `sampleEvent`, and `crashlytics_list_notes`.
 4. Write one file per issue to `.dekaput/events/<issue id>.json` with **only** these fields, copied verbatim:
@@ -16,6 +16,9 @@ With the Firebase MCP server, for the app id you were given:
    Never copy `user`, `installationUuid`, `customKeys`, `logs` or `breadcrumbs`.
 
 ## 2. Pick the crash
+
+On Android with R8, Crashlytics reads the frames back to real names but not the exception message, so a message can name the app's class only by its R8 name (`Key sm8:currentTab ...`). Pass the release build's mapping with `--mapping <mapping.txt>`: the one from that exact build (your CI's archived artifact, or `./gradlew :app:minifyReleaseWithR8` on the release commit). Another build's mapping gives the same short names to different classes.
+
 
 ```bash
 npx @vaazh-studios/de-kaput list --app-package <your app's package> .dekaput/events/*.json

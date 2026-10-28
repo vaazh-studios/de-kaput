@@ -10,6 +10,7 @@
 // highest-ranked one that is not handled; one run works on that one only.
 
 import { classifyIssue } from './classify.mjs';
+import { deobfuscateEvent } from './mapping.mjs';
 import { evidenceMarkdown } from './evidence.mjs';
 import { tagFor } from './versions.mjs';
 
@@ -31,8 +32,10 @@ function shapeOf(subtitle, appPackages) {
   return s.replace(/\b[a-z]{1,3}\d+\b/g, '<class>').trim();
 }
 
-export function listCrashes(events, { prs = [], options = {}, sourceSetOf = () => null, tags = [] } = {}) {
-  const fatal = events.filter((e) => e.errorType === 'FATAL');
+export function listCrashes(events, { prs = [], options = {}, sourceSetOf = () => null, tags = [], mapping = null } = {}) {
+  const fatal = events
+    .filter((e) => e.errorType === 'FATAL')
+    .map((e) => (mapping ? (({ event, decoded }) => ({ ...event, decoded }))(deobfuscateEvent(e, mapping)) : e));
   const ranked = [...fatal].sort(
     (a, b) => (b.issue?.impactedUsersCount ?? 0) - (a.issue?.impactedUsersCount ?? 0) || (b.issue?.eventsCount ?? 0) - (a.issue?.eventsCount ?? 0),
   );
@@ -46,6 +49,7 @@ export function listCrashes(events, { prs = [], options = {}, sourceSetOf = () =
       users: issue.impactedUsersCount ?? null,
       events: issue.eventsCount ?? null,
       handled: handledBy(event.issueId, prs, event.notes ?? []),
+      ...(event.decoded && Object.keys(event.decoded).length ? { decoded: event.decoded } : {}),
       ...classifyIssue(event, sourceSetOf, options),
       // Android events carry the build's git revision (buildStamp); it beats a tag lookup.
       release: event.revision ?? tagFor(event.platform.toLowerCase(), event.version, tags),

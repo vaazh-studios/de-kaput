@@ -127,7 +127,7 @@ test('the simulator is an iPhone on the newest iOS', () => {
   assert.throws(() => pickDestination({}), /no iPhone simulator/);
 });
 
-test("without an attached crash log, the crash reporter's report of the test is used: recent, from a simulator, naming the test", () => {
+test("without an attached crash log, the crash reporter's report of the test is used: recent and naming the test", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dekaput-reports-'));
   const [header, body] = [fixture('ios-swift-trap.ips').split('\n')[0], JSON.parse(fixture('ios-swift-trap.ips').split('\n').slice(1).join('\n'))];
   const write = (name, report, age = 0) => {
@@ -137,7 +137,7 @@ test("without an attached crash log, the crash reporter's report of the test is 
     fs.utimesSync(file, at, at);
   };
   const since = Date.now() - 60_000;
-  write('mac-app.ips', { ...body, parentProc: 'launchd' });
+  write('other-app.ips', { ...body, threads: [{ frames: [{ imageIndex: 0, symbol: 'main' }] }] });
   write('old.ips', { ...body, parentProc: 'launchd_sim' }, 120_000);
   assert.equal(crashReportFor('testCountOfNilDoesNotCrash()', since, dir), null);
   write('xctest.ips', { ...body, parentProc: 'launchd_sim' });

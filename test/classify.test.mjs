@@ -155,3 +155,15 @@ test('iOS names a crash by its signal; a watchdog kill is skipped', () => {
   assert.equal(watchdog.stop, 'skip');
   assert.match(watchdog.reason, /watchdog/);
 });
+
+test('frames parse as Crashlytics writes them and as the JVM does, without eating Swift parentheses', () => {
+  assert.deepEqual(parseFrames('at a.B$c$1.invokeSuspend(B.kt:104)\nat a.B.d (B.kt:7)\nat j.N.m(Native Method)'), [
+    { symbol: 'a.B$c$1.invokeSuspend', file: 'B.kt' },
+    { symbol: 'a.B.d', file: 'B.kt' },
+    { symbol: 'j.N.m', file: null },
+  ]);
+  assert.deepEqual(parseFrames('at static Parser.count(of:)\nat static Parser.count(of:) (Parser.swift:5)'), [
+    { symbol: 'static Parser.count(of:)', file: null },
+    { symbol: 'static Parser.count(of:)', file: 'Parser.swift' },
+  ]);
+});

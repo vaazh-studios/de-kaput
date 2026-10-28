@@ -90,7 +90,7 @@ test("the Gradle task comes from the module that holds the branch's tests, the m
 test('the module is looked up across every app: a Gradle task or an Xcode scheme', () => {
   const config = parseConfig(GOOD);
   assert.equal(moduleForAnyApp(config, ['app/src/test/kotlin/ATest.kt']).gradleTask, ':app:testDebugUnitTest');
-  assert.deepEqual(moduleForAnyApp(config, ['ios/AppTests/ParserTests.swift']).xcode, { scheme: 'App', workspace: 'App.xcworkspace', project: null, destination: null });
+  assert.deepEqual(moduleForAnyApp(config, ['ios/AppTests/ParserTests.swift']).xcode, { scheme: 'App', workspace: 'App.xcworkspace', project: null, destination: null, args: [] });
   assert.equal(moduleForAnyApp(config, ['web/x.test.ts']), null);
 });
 
@@ -103,4 +103,6 @@ test('an Xcode module at the repo root holds every file; its keys are checked', 
   assert.throws(() => ios('        xcode-project: A.xcodeproj\n'), /"gradle-task" \(Gradle\) or "xcode-scheme"/);
   assert.throws(() => ios('        xcode-scheme: A\n        gradle-task: ":a:test"\n'), /one of the two/);
   assert.throws(() => ios('        xcode-scheme: A\n        xcode-project: A.xcodeproj\n        xcode-workspace: A.xcworkspace\n'), /not both/);
+  assert.deepEqual(ios('        xcode-scheme: A\n        xcode-args: ["CODE_SIGNING_ALLOWED=NO", "-testPlan", "CI"]\n').modules[0].xcode.args, ['CODE_SIGNING_ALLOWED=NO', '-testPlan', 'CI']);
+  assert.throws(() => ios('        xcode-scheme: A\n        xcode-args: CODE_SIGNING_ALLOWED=NO\n'), /"xcode-args" must be a list of strings/);
 });

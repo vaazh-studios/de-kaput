@@ -79,8 +79,9 @@ function runnerFor(module, filter) {
   };
 }
 
-// Files a run leaves behind: receipts and build products, Gradle's local.properties, Xcode's .swiftpm/.
-const LEFT_BY_RUNS = ['.dekaput/', 'local.properties', '.swiftpm/'];
+// Files a run leaves behind: receipts and build products, Gradle's local.properties, the Kotlin 2
+// compiler's .kotlin/, Xcode's .swiftpm/.
+const LEFT_BY_RUNS = ['.dekaput/', 'local.properties', '.kotlin/', '.swiftpm/'];
 
 export function verify(opts, log = (line) => console.error(`dekaput: ${line}`)) {
   for (const name of ['issue', 'test', 'exception', 'anchor']) if (!opts[name]) fail(`--${name} is required`);

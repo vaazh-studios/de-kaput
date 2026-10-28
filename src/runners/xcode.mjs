@@ -128,7 +128,7 @@ export function uncaughtIn(output, testName) {
 }
 
 // The test's own crash report from the Mac's crash reporter: written since the
-// run started, by a process in a simulator, with the test method on a thread.
+// run started, with the test method on a thread (in a simulator or on the Mac).
 export function crashReportFor(testName, since, dir = CRASH_REPORTS) {
   let files;
   try {
@@ -143,7 +143,7 @@ export function crashReportFor(testName, since, dir = CRASH_REPORTS) {
       const text = fs.readFileSync(file, 'utf8');
       const report = JSON.parse(text.slice(text.indexOf('\n') + 1));
       const named = (report.threads ?? []).some((t) => (t.frames ?? []).some((f) => f.symbol?.includes(call)));
-      if (report.parentProc === 'launchd_sim' && named) return text;
+      if (named) return text;
     } catch {
       // Not a JSON crash report.
     }
@@ -211,10 +211,11 @@ function failureOf(bundle, failed, output, since, own) {
 export function xcodeRun({ dir, module, filter, destination, derivedData }) {
   const out = fs.mkdtempSync(path.join(os.tmpdir(), 'dekaput-xcresult-'));
   const bundle = path.join(out, 'run.xcresult');
-  const { scheme, workspace, project } = module.xcode;
+  const { scheme, workspace, project, args: extra = [] } = module.xcode;
   const args = [
     'test', '-scheme', scheme, '-destination', destination,
     ...(workspace ? ['-workspace', workspace] : project ? ['-project', project] : []),
+    ...extra,
     ...(filter ? [`-only-testing:${filter}`] : []),
     '-resultBundlePath', bundle,
     '-derivedDataPath', derivedData,

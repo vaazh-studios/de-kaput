@@ -5,6 +5,8 @@ Your app went kaput. de-kaput reproduces the crash with a test, fixes it, and op
 It never fixes blind: no pull request without a test that fails with the crash's own exception before the fix and passes after it. A person always reviews and merges.
 
 > **Status: early.** One Android crash has gone end to end, from Crashlytics to a pull request with its test. The Xcode runner has proven a crash in a Swift package and a UIKit crash in an app with app-hosted tests.
+>
+> See it on two demo forks, each with a crash planted on purpose: Google's [architecture-samples](https://github.com/vaazh-studios/de-kaput-demo-architecture-samples/pull/1) (a Kotlin coroutine crash) and [NetNewsWire](https://github.com/vaazh-studios/de-kaput-demo-netnewswire/pull/1) (a Swift trap in its feed parser).
 
 ## How it works
 
@@ -52,9 +54,10 @@ apps:
       - path: ios                  # "." when the Xcode project is at the repo root
         xcode-scheme: App
         xcode-workspace: App.xcworkspace   # or xcode-project; neither for a Swift package
+        xcode-args: ["CODE_SIGNING_ALLOWED=NO"]   # optional: what your CI passes to xcodebuild
 ```
 
-With it, the commands need no app-specific flags: `list` takes each crash's app by platform, and `verify` finds the Gradle task or Xcode scheme from the module that holds the new test. On iOS your app's own code is its Swift and Objective-C files in the repo, so `packages` only matters for Kotlin Multiplatform code; `xcode-destination` picks a simulator (otherwise an iPhone on the newest iOS installed). Flags still win over the file. A mistake in the file is named, not guessed (`unknown key "open-pr-limit"`).
+With it, the commands need no app-specific flags: `list` takes each crash's app by platform, and `verify` finds the Gradle task or Xcode scheme from the module that holds the new test. On iOS your app's own code is its Swift and Objective-C files in the repo, so `packages` only matters for Kotlin Multiplatform code; `xcode-destination` picks a simulator (otherwise an iPhone on the newest iOS installed), or `platform=macOS` for a package whose tests run on the Mac. Flags still win over the file. A mistake in the file is named, not guessed (`unknown key "open-pr-limit"`).
 
 ## Use it with your agent
 

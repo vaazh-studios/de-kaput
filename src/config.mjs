@@ -19,7 +19,8 @@
 //         - path: ios                  # "." for the repo root
 //           xcode-scheme: App
 //           xcode-workspace: App.xcworkspace   # or xcode-project; neither for a Swift package (relative to path)
-//           xcode-destination: "platform=iOS Simulator,name=iPhone 17"   # optional
+//           xcode-destination: "platform=iOS Simulator,name=iPhone 17"   # optional; "platform=macOS" for tests that run on the Mac
+//           xcode-args: ["CODE_SIGNING_ALLOWED=NO", "-testPlan", "AppTests"]   # optional, what the project's CI passes
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -30,7 +31,7 @@ export const DEFAULT_RELEASE_TAGS = ['{platform}/v{version}-{build}', 'v{version
 const PLATFORMS = ['android', 'ios'];
 const TOP_KEYS = ['version', 'open-pull-requests-limit', 'reviewers', 'apps'];
 const APP_KEYS = ['name', 'platform', 'crashlytics-app-id', 'packages', 'ignore-frames', 'probes', 'release-tags', 'modules'];
-const XCODE_KEYS = ['xcode-scheme', 'xcode-workspace', 'xcode-project', 'xcode-destination'];
+const XCODE_KEYS = ['xcode-scheme', 'xcode-workspace', 'xcode-project', 'xcode-destination', 'xcode-args'];
 const MODULE_KEYS = ['path', 'gradle-task', ...XCODE_KEYS];
 
 class ConfigError extends Error {}
@@ -77,9 +78,17 @@ export function parseConfig(text) {
         if (XCODE_KEYS.some((k) => m[k] !== undefined)) fail(mWhere, 'the xcode-* keys need "xcode-scheme", not "gradle-task"');
         return { path: root, gradleTask: m['gradle-task'] };
       }
-      for (const key of XCODE_KEYS) if (m[key] !== undefined && (typeof m[key] !== 'string' || !m[key])) fail(mWhere, `"${key}" must be a name or path`);
+      for (const key of XCODE_KEYS.filter((k) => k !== 'xcode-args')) {
+        if (m[key] !== undefined && (typeof m[key] !== 'string' || !m[key])) fail(mWhere, `"${key}" must be a name or path`);
+      }
       if (m['xcode-workspace'] && m['xcode-project']) fail(mWhere, '"xcode-workspace" or "xcode-project", not both');
-      const xcode = { scheme: m['xcode-scheme'], workspace: m['xcode-workspace'] ?? null, project: m['xcode-project'] ?? null, destination: m['xcode-destination'] ?? null };
+      const xcode = {
+        scheme: m['xcode-scheme'],
+        workspace: m['xcode-workspace'] ?? null,
+        project: m['xcode-project'] ?? null,
+        destination: m['xcode-destination'] ?? null,
+        args: stringList(m['xcode-args'], 'xcode-args', mWhere),
+      };
       return { path: root, xcode };
     });
     return {

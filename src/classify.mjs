@@ -27,11 +27,13 @@ const INTERNAL_DEVICE = /sdk_gphone|emulator|simulator|generic_x86/i;
 export function parseFrames(text) {
   const frames = [];
   for (const line of text.split('\n')) {
-    const match = /^\s*at\s+(.+?)(?:\s+\(([^)]*)\))?\s*$/.exec(line);
+    // "at a.B.c (B.kt:12)" as Crashlytics writes it, "at a.B.c(B.kt:12)" as the JVM does; with no space the
+    // parentheses must hold a file, so Swift's "at static Parser.count(of:)" keeps its own.
+    const match = /^\s*at\s+(.+?)(?:\s+\(([^)]*)\)|\(([^()\s]+\.\w+(?::\d+)?|Unknown Source|Native Method)\))?\s*$/.exec(line);
     if (!match) continue;
     let symbol = match[1];
     if (symbol.startsWith('kfun:')) symbol = symbol.slice(5).split('(')[0].replace('#', '.');
-    const file = match[2]?.split(':')[0];
+    const file = (match[2] ?? match[3])?.split(':')[0];
     frames.push({ symbol, file: file && file.includes('.') ? file : null });
   }
   return frames;

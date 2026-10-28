@@ -8,18 +8,7 @@ It never fixes blind: no pull request without a test that fails with the crash's
 
 ## How it works
 
-```mermaid
-flowchart LR
-    A([Top crashes]) --> B[dekaput list]
-    B -.->|can't test| N([Note])
-    B --> C[Test that<br/>crashes]
-    C --> D{{dekaput verify}}
-    D -->|fails on main| E[Fix]
-    E --> D
-    D -.->|rejected| C
-    D -->|proven| F[dekaput open-pr]
-    F --> G([Pull request])
-```
+![de-kaput: top crashes, dekaput list, a test that crashes, dekaput verify, dekaput open-pr, pull request](assets/how-it-works.svg)
 
 1. Your coding agent (Codex or Claude Code) reads the latest release's top crashes from Crashlytics through the Firebase MCP server.
 2. `dekaput list` ranks them and picks the next one without a pull request.

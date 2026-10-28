@@ -6,7 +6,7 @@ You need: the Firebase MCP server, `gh` signed in, `git`, Node 20+, and the app'
 
 ## 1. Read the release's top crashes
 
-With the Firebase MCP server, for the app id you were given:
+With the Firebase MCP server, for each app's `crashlytics-app-id` in `.github/de-kaput.yml` (or the app id you were given):
 
 1. Find the **latest release**: the newest version that was actually released (it has a release tag, or you were told which). `crashlytics_get_report` with `report: "topVersions"` lists versions by event count, not by age, and includes internal builds, so do not take its first row.
 2. `crashlytics_get_report` with `report: "topIssues"`, `issueErrorTypes: ["FATAL"]`, the latest version in `versionDisplayNames`, `pageSize: 10`.
@@ -21,10 +21,10 @@ On Android with R8, Crashlytics reads the frames back to real names but not the 
 
 
 ```bash
-npx @vaazh-studios/de-kaput list --app-package <your app's package> .dekaput/events/*.json
+npx @vaazh-studios/de-kaput list .dekaput/events/*.json
 ```
 
-Add `--ignore-frame <package>` for the app's own crash reporter, and `--probe <regex>` for errors the app raises on purpose. `--max-prs <n>` (default 5) caps how many de-kaput pull requests can be open at once, like Dependabot's `open-pull-requests-limit`; crashes past it wait for the next run. `--json` gives the same as JSON.
+It reads the app's packages, crash-reporter frames, probes, release tags and PR limit from `.github/de-kaput.yml`. Without that file, pass `--app-package <package>`, `--ignore-frame <package>` and `--probe <regex>`. `--max-prs <n>` (default 5) caps how many de-kaput pull requests can be open at once, like Dependabot's `open-pull-requests-limit`; crashes past it wait for the next run. `--json` gives the same as JSON.
 
 Work through `queue` in order, **one crash at a time**. For each crash:
 
@@ -47,12 +47,12 @@ Budget: 3 ideas and 5 test attempts. If none reproduces the crash, add a `de-kap
 ## 4. Prove it
 
 ```bash
-npx @vaazh-studios/de-kaput verify --issue <id> --gradle-task <:module:testTask> --test '<filter>' \
+npx @vaazh-studios/de-kaput verify --issue <id> --test '<filter>' \
   --exception <exception class from list> --anchor '<anchor from list>' --anchor-kind <frame|message> \
   --release <release from list>
 ```
 
-The first build in a fresh worktree can take a long time; run it in the background or with a long timeout.
+The Gradle task comes from the config's module that holds the new test; pass `--gradle-task <:module:testTask>` when it has none. The first build in a fresh worktree can take a long time; run it in the background or with a long timeout.
 
 - **Fails on the base, and the fix is still to write:** fix the code (follow the repo's rules), commit, run `verify` again. It must report `proven`.
 - **Passes on the base and crashes on the release:** `fixed-on-main`. The crash is already fixed and not released yet. No fix is needed; the PR adds the test so it stays fixed.

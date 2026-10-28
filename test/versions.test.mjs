@@ -20,3 +20,9 @@ test('another platform tag is never used', () => {
 test('a version Crashlytics did not format as name (build) gives null', () => {
   assert.equal(tagFor('ios', '1.4', tags), null);
 });
+
+test("a project's own tag patterns are used in order", () => {
+  const own = ['release-android-1.4.75', 'v1.4-75'];
+  assert.equal(tagFor('android', '1.4 (75)', own, ['release-{platform}-{version}.{build}']), 'release-android-1.4.75');
+  assert.equal(tagFor('android', '1.4 (75)', own, ['nope-{build}', 'v{version}-{build}']), 'v1.4-75');
+});

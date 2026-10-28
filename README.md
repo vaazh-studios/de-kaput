@@ -22,6 +22,37 @@ It never fixes blind: no pull request without a test that fails with the crash's
 
 Built for native Android, native iOS and Kotlin Multiplatform apps. Gradle first; Xcode next.
 
+## Configuration
+
+Add `.github/de-kaput.yml` to your app's repo, next to `dependabot.yml`:
+
+```yaml
+version: 1
+open-pull-requests-limit: 5        # most de-kaput PRs open at once
+reviewers: [your-github-name]      # asked to review every PR
+
+apps:
+  - name: android
+    platform: android              # android or ios
+    crashlytics-app-id: "1:1234567890:android:abc123"
+    packages: [com.example.app]    # your app's own code
+    ignore-frames: [com.example.app.crashreporting]   # your crash reporter, never the cause
+    probes: ["crash-reporting canary"]                # errors you raise on purpose
+    release-tags: ["android/v{version}-{build}", "v{version}-{build}"]
+    modules:                       # where tests live, and the task that runs them
+      - path: app
+        gradle-task: ":app:testDebugUnitTest"
+      - path: shared
+        gradle-task: ":shared:testAndroidHostTest"
+
+  - name: ios
+    platform: ios
+    crashlytics-app-id: "1:1234567890:ios:def456"
+    packages: [com.example.app]
+```
+
+With it, the commands need no app-specific flags: `list` takes each crash's app by platform, and `verify` finds the Gradle task from the module that holds the new test. Flags still win over the file. A mistake in the file is named, not guessed (`unknown key "open-pr-limit"`).
+
 ## Use it with your agent
 
 - **Claude Code:** copy `skills/de-kaput/` into your project's `.claude/skills/`, then ask "fix the next crash with de-kaput".

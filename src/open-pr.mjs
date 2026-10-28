@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { defaultBranch, git, repoRoot } from './git.mjs';
+import { loadConfig } from './config.mjs';
 import { PR_LABEL } from './list.mjs';
 import { checkReceipt } from './receipt.mjs';
 
@@ -79,7 +80,11 @@ export function openPr(opts) {
   try {
     execFileSync('gh', ['label', 'create', PR_LABEL, '--color', 'B60205', '--description', 'Crash fix proven by a test (de-kaput)'], { cwd: root, stdio: 'ignore' });
   } catch { /* already there */ }
-  return execFileSync('gh', ['pr', 'create', '--base', base, '--head', branch, '--title', opts.title, '--body-file', bodyFile, '--label', PR_LABEL], {
+  // GitHub refuses a review request to the PR's own author, so the account opening it is left out.
+  const me = execFileSync('gh', ['api', 'user', '-q', '.login'], { cwd: root, encoding: 'utf8' }).trim();
+  const reviewers = (loadConfig(root)?.reviewers ?? []).filter((r) => r.toLowerCase() !== me.toLowerCase());
+  const reviewerArgs = reviewers.length ? ['--reviewer', reviewers.join(',')] : [];
+  return execFileSync('gh', ['pr', 'create', '--base', base, '--head', branch, '--title', opts.title, '--body-file', bodyFile, '--label', PR_LABEL, ...reviewerArgs], {
     cwd: root,
     encoding: 'utf8',
   }).trim();

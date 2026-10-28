@@ -80,3 +80,14 @@ test('like Dependabot, attempts wait once the open PR limit is reached; notes do
   assert.deepEqual(queue.map((c) => c.issueId.slice(0, 6)), ['e04405', 'a2bfa6']);
   assert.deepEqual(waiting.map((c) => c.issueId), ['other1']);
 });
+
+test("with a config, each crash takes its platform's app, and a platform with no app is skipped", () => {
+  const ios = { ...fixture('ios-konan-abort.json', { id: 'c7a0', impactedUsersCount: 9 }) };
+  const android = fixture('android-currenttab.json', { id: 'e044', impactedUsersCount: 1 });
+  const optionsFor = (event) => (event.platform === 'ANDROID' ? { ...options, releaseTags: ['{version}+{build}'] } : null);
+  const { crashes } = listCrashes([ios, android], { optionsFor, sourceSetOf: inMain, tags: ['1.4+77'] });
+  assert.equal(crashes.find((c) => c.platform === 'IOS').stop, 'skip');
+  assert.match(crashes.find((c) => c.platform === 'IOS').reason, /no app for ios/);
+  assert.equal(crashes.find((c) => c.platform === 'ANDROID').stop, 'attempt');
+  assert.equal(crashes.find((c) => c.platform === 'ANDROID').release, '1.4+77');
+});

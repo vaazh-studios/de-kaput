@@ -6,6 +6,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import { parseArgs } from 'node:util';
 import { sourceSetFinder } from '../src/classify.mjs';
+import { appFor, listOptions, loadConfig } from '../src/config.mjs';
 import { git, repoRoot } from '../src/git.mjs';
 import { formatList, listCrashes, PR_LABEL } from '../src/list.mjs';
 import { parseMapping } from '../src/mapping.mjs';
@@ -13,8 +14,9 @@ import { OPEN_PR_OPTIONS, openPr } from '../src/open-pr.mjs';
 import { verify, VERIFY_OPTIONS } from '../src/verify.mjs';
 
 const USAGE = `usage:
-  dekaput list --app-package <pkg> [--ignore-frame <pkg>] [--probe <regex>] [--mapping <mapping.txt>] [--max-prs <n>] [--json] <event files>
-  dekaput verify --issue <id> --gradle-task <:module:task> --test <filter> --exception <class>
+  dekaput list [--app <name>] [--mapping <mapping.txt>] [--max-prs <n>] [--json] <event files>
+               (without .github/de-kaput.yml: --app-package <pkg> [--ignore-frame <pkg>] [--probe <regex>])
+  dekaput verify --issue <id> --test <filter> --exception <class> [--gradle-task <:module:task>]
                  --anchor <frame or class> [--anchor-kind frame|message] [--release <ref>]
   dekaput open-pr --title <title> --body-file <file> [--also <issue id>]`;
 
@@ -30,13 +32,18 @@ function list(args) {
       // The release build's R8 mapping.txt, to read renamed class names in crash messages.
       mapping: { type: 'string' },
       // Most de-kaput PRs open at once, like Dependabot's open-pull-requests-limit.
-      'max-prs': { type: 'string', default: '5' },
+      'max-prs': { type: 'string' },
+      // Which config app to use for every crash, instead of matching by platform.
+      app: { type: 'string' },
       json: { type: 'boolean', default: false },
     },
   });
   if (!positionals.length) throw new Error('give the event files to list');
-  if (!values['app-package'].length) throw new Error('--app-package is required: the packages that are your app\'s own code');
   const root = repoRoot();
+  const config = loadConfig(root);
+  // Flags win; otherwise each crash takes the config's app for its platform.
+  const fromFlags = values['app-package'].length > 0;
+  if (!fromFlags && !config) throw new Error("no .github/de-kaput.yml here; add one, or pass --app-package (the packages that are your app's own code)");
   const events = positionals.map((f) => JSON.parse(fs.readFileSync(f, 'utf8')));
   const prs = values.prs
     ? JSON.parse(fs.readFileSync(values.prs, 'utf8'))
@@ -44,7 +51,8 @@ function list(args) {
   const result = listCrashes(events, {
     prs,
     tags: git(['tag'], root).split('\n').filter(Boolean),
-    maxPrs: Number(values['max-prs']),
+    maxPrs: Number(values['max-prs'] ?? config?.openPullRequestsLimit ?? 5),
+    optionsFor: fromFlags ? null : (event) => { const app = appFor(config, event.platform, values.app); return app && listOptions(app); },
     mapping: values.mapping ? parseMapping(fs.readFileSync(values.mapping, 'utf8')) : null,
     sourceSetOf: sourceSetFinder(git(['ls-files', '*.kt', '*.java'], root).split('\n')),
     options: {

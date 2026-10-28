@@ -32,7 +32,10 @@ function shapeOf(subtitle, appPackages) {
   return s.replace(/\b[a-z]{1,3}\d+\b/g, '<class>').trim();
 }
 
-export function listCrashes(events, { prs = [], options = {}, sourceSetOf = () => null, tags = [], mapping = null, maxPrs = 5 } = {}) {
+// options: { appPackages, ignoreFrames, probes, releaseTags } for every crash, or
+// optionsFor(event) to pick them per crash (the config's app for its platform; null when none).
+export function listCrashes(events, { prs = [], options = {}, optionsFor = null, sourceSetOf = () => null, tags = [], mapping = null, maxPrs = 5 } = {}) {
+  const optsOf = (event) => (optionsFor ? optionsFor(event) : options);
   const fatal = events
     .filter((e) => e.errorType === 'FATAL')
     .map((e) => (mapping ? (({ event, decoded }) => ({ ...event, decoded }))(deobfuscateEvent(e, mapping)) : e));
@@ -49,10 +52,11 @@ export function listCrashes(events, { prs = [], options = {}, sourceSetOf = () =
       users: issue.impactedUsersCount ?? null,
       events: issue.eventsCount ?? null,
       handled: handledBy(event.issueId, prs, event.notes ?? []),
+      appPackages: optsOf(event)?.appPackages ?? [],
       ...(event.decoded && Object.keys(event.decoded).length ? { decoded: event.decoded } : {}),
-      ...classifyIssue(event, sourceSetOf, options),
+      ...(optsOf(event) ? classifyIssue(event, sourceSetOf, optsOf(event)) : { stop: 'skip', reason: `no app for ${event.platform.toLowerCase()} in the config` }),
       // Android events carry the build's git revision (buildStamp); it beats a tag lookup.
-      release: event.revision ?? tagFor(event.platform.toLowerCase(), event.version, tags),
+      release: event.revision ?? tagFor(event.platform.toLowerCase(), event.version, tags, optsOf(event)?.releaseTags),
       evidence: evidenceMarkdown(issue, [event]),
     };
   });
@@ -60,8 +64,8 @@ export function listCrashes(events, { prs = [], options = {}, sourceSetOf = () =
   const classAnchored = (c) => c.stop === 'attempt' && c.anchor?.sourceSet != null;
   for (const crash of crashes) {
     if (classAnchored(crash)) continue;
-    const shape = shapeOf(crash.subtitle, options.appPackages ?? []);
-    const twin = crashes.find((c) => c !== crash && classAnchored(c) && c.platform === crash.platform && shapeOf(c.subtitle, options.appPackages ?? []) === shape);
+    const shape = shapeOf(crash.subtitle, crash.appPackages);
+    const twin = crashes.find((c) => c !== crash && classAnchored(c) && c.platform === crash.platform && shapeOf(c.subtitle, c.appPackages) === shape);
     if (twin) Object.assign(crash, { stop: 'same-as', sameAs: twin.issueId, reason: `the same crash as ${twin.issueId}; one fix covers both` });
   }
   // A twin ranks its group: when the top crash is the renamed copy, its readable twin is next.

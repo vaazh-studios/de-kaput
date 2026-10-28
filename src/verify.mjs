@@ -16,6 +16,7 @@ import path from 'node:path';
 import { branchDiff, git, mainCheckout, mergeBase, repoRoot, sha256 } from './git.mjs';
 import { decide, diffFacts, TEST_PATH } from './proof.mjs';
 import { writeReceipt } from './receipt.mjs';
+import { loadConfig, taskForAnyApp } from './config.mjs';
 import { gradleRun } from './runners/gradle.mjs';
 
 const WORKTREE_PREFIX = 'dekaput-';
@@ -58,7 +59,7 @@ function removeStaleWorktrees(root) {
 }
 
 export function verify(opts, log = (line) => console.error(`dekaput: ${line}`)) {
-  for (const name of ['issue', 'gradle-task', 'test', 'exception', 'anchor']) if (!opts[name]) fail(`--${name} is required`);
+  for (const name of ['issue', 'test', 'exception', 'anchor']) if (!opts[name]) fail(`--${name} is required`);
   if (!['frame', 'message'].includes(opts['anchor-kind'])) fail('--anchor-kind is frame or message');
 
   const root = repoRoot();
@@ -75,7 +76,10 @@ export function verify(opts, log = (line) => console.error(`dekaput: ${line}`)) 
   if (testFiles.length === 0) fail('the branch adds or changes no test');
   const knownTestFiles = git(['ls-files'], root).split('\n').filter((f) => TEST_PATH.test(f));
 
-  const task = opts['gradle-task'];
+  // The flag wins; otherwise the config's module that holds the branch's tests.
+  const config = opts['gradle-task'] ? null : loadConfig(root);
+  const task = opts['gradle-task'] ?? (config && taskForAnyApp(config, testFiles));
+  if (!task) fail(`no module in ${config ? config.file : '.github/de-kaput.yml'} holds ${testFiles.join(', ')}; add it under modules, or pass --gradle-task`);
   const runTest = (dir) => gradleRun({ dir, task, filter: opts.test });
   const runSuite = (dir) => gradleRun({ dir, task, filter: null });
 

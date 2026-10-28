@@ -1,0 +1,91 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { appFor, loadConfig, parseConfig, taskFor, taskForAnyApp } from '../src/config.mjs';
+
+const GOOD = `
+version: 1
+open-pull-requests-limit: 3
+reviewers: [octocat]
+apps:
+  - name: android
+    platform: android
+    crashlytics-app-id: "1:123:android:abc"
+    packages: [com.example.app]
+    ignore-frames: [com.example.app.crashreporting]
+    probes: ["crash-reporting canary"]
+    release-tags: ["release/{version}-{build}"]
+    modules:
+      - path: shared/presentation
+        gradle-task: ":shared:presentation:testAndroidHostTest"
+      - path: shared
+        gradle-task: ":shared:testAndroidHostTest"
+      - path: app
+        gradle-task: ":app:testDebugUnitTest"
+  - name: ios
+    platform: ios
+    crashlytics-app-id: "1:123:ios:def"
+    packages: [com.example.app]
+`;
+
+const dir = () => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'dekaput-config-')));
+
+test('a full config reads back with its values', () => {
+  const config = parseConfig(GOOD);
+  assert.equal(config.openPullRequestsLimit, 3);
+  assert.deepEqual(config.reviewers, ['octocat']);
+  assert.equal(config.apps[0].crashlyticsAppId, '1:123:android:abc');
+  assert.deepEqual(config.apps[0].releaseTags, ['release/{version}-{build}']);
+});
+
+test('defaults: a PR limit of 5, the standard release tags, no reviewers', () => {
+  const config = parseConfig('version: 1\napps:\n  - platform: ios\n    crashlytics-app-id: "1:1:ios:x"\n    packages: [com.example.app]\n');
+  assert.equal(config.openPullRequestsLimit, 5);
+  assert.deepEqual(config.reviewers, []);
+  assert.deepEqual(config.apps[0].releaseTags, ['{platform}/v{version}-{build}', 'v{version}-{build}']);
+  assert.deepEqual(config.apps[0].probes, []);
+});
+
+test('mistakes are named, not guessed', () => {
+  assert.throws(() => parseConfig('version: 1\n'), /apps/);
+  assert.throws(() => parseConfig('version: 2\napps: []\n'), /version 1/);
+  assert.throws(() => parseConfig(`${GOOD}\nopen-pr-limit: 2\n`), /unknown key "open-pr-limit"/);
+  assert.throws(() => parseConfig('version: 1\napps:\n  - platform: windows\n    crashlytics-app-id: x\n    packages: [a]\n'), /platform/);
+  assert.throws(() => parseConfig('version: 1\napps:\n  - platform: ios\n    packages: [a]\n'), /crashlytics-app-id/);
+  assert.throws(() => parseConfig('version: 1\napps:\n  - platform: ios\n    crashlytics-app-id: x\n'), /packages/);
+  assert.throws(() => parseConfig('version: 1\napps:\n  - platform: ios\n    crashlytics-app-id: x\n    packages: [a]\n    module: []\n'), /unknown key "module"/);
+});
+
+test('.github/de-kaput.yml is found first, de-kaput.yml at the root otherwise, nothing is null', () => {
+  const root = dir();
+  assert.equal(loadConfig(root), null);
+  fs.writeFileSync(path.join(root, 'de-kaput.yml'), GOOD.replace('open-pull-requests-limit: 3', 'open-pull-requests-limit: 4'));
+  assert.equal(loadConfig(root).openPullRequestsLimit, 4);
+  fs.mkdirSync(path.join(root, '.github'));
+  fs.writeFileSync(path.join(root, '.github', 'de-kaput.yml'), GOOD);
+  assert.equal(loadConfig(root).openPullRequestsLimit, 3);
+});
+
+test("a crash's app is the one for its platform, or the one named", () => {
+  const config = parseConfig(GOOD);
+  assert.equal(appFor(config, 'ANDROID').name, 'android');
+  assert.equal(appFor(config, 'IOS').name, 'ios');
+  assert.equal(appFor(config, 'IOS', 'android').name, 'android');
+  assert.throws(() => appFor(config, 'IOS', 'web'), /no app named "web"/);
+});
+
+test("the Gradle task comes from the module that holds the branch's tests, the most specific path first", () => {
+  const app = parseConfig(GOOD).apps[0];
+  assert.equal(taskFor(app, ['shared/presentation/src/androidHostTest/kotlin/a/ATest.kt']), ':shared:presentation:testAndroidHostTest');
+  assert.equal(taskFor(app, ['shared/src/commonTest/kotlin/a/BTest.kt']), ':shared:testAndroidHostTest');
+  assert.equal(taskFor(app, ['docs/x.md']), null);
+  assert.throws(() => taskFor(app, ['app/src/test/kotlin/ATest.kt', 'shared/presentation/src/androidHostTest/kotlin/BTest.kt']), /two modules/);
+});
+
+test('the Gradle task is looked up across every app, and two different tasks are an error', () => {
+  const config = parseConfig(GOOD);
+  assert.equal(taskForAnyApp(config, ['app/src/test/kotlin/ATest.kt']), ':app:testDebugUnitTest');
+  assert.equal(taskForAnyApp(config, ['web/x.test.ts']), null);
+});

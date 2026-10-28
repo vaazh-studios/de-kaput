@@ -1,0 +1,12 @@
+{
+  "issueId": "f7153d5f0a3e6ab948ba832f41e92e8d",
+  "platform": "ANDROID",
+  "errorType": "FATAL",
+  "title": "Buffers.kt - com.example.engine.FloatBuffer.ensure",
+  "subtitle": "java.lang.OutOfMemoryError",
+  "version": "1.4 (77)",
+  "device": "Google (sdk_gphone64_arm64)",
+  "os": "Unknown (16)",
+  "exceptions": "java.lang.OutOfMemoryError\nat com.example.engine.FloatBuffer.ensure (Buffers.kt:30)\n... frames omitted ...",
+  "threads": ""
+}

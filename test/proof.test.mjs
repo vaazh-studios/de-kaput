@@ -1,0 +1,198 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { decide, diffFacts, parseJUnit, parseVitest } from '../src/proof.mjs';
+
+const exception = 'java.lang.IllegalArgumentException';
+const frameAnchor = { kind: 'frame', text: 'com.example.app.data.Parser.parse' };
+const messageAnchor = { kind: 'message', text: 'com.example.app.ui.tabs.HomeTab' };
+
+const crashed = {
+  status: 'fail',
+  failureType: 'java.lang.IllegalArgumentException',
+  stack: 'java.lang.IllegalArgumentException: bad\n\tat com.example.app.data.Parser.parse(Parser.kt:12)\n\tat com.example.app.data.ParserTest.a crash input parses(ParserTest.kt:9)',
+};
+const pass = { status: 'pass' };
+
+const fixDiff = [
+  'diff --git a/shared/data/src/commonMain/kotlin/com/x/Parser.kt b/shared/data/src/commonMain/kotlin/com/x/Parser.kt',
+  '--- a/shared/data/src/commonMain/kotlin/com/x/Parser.kt',
+  '+++ b/shared/data/src/commonMain/kotlin/com/x/Parser.kt',
+  '@@ -1,3 +1,3 @@',
+  '-    return text.toInt()',
+  '+    return text.toIntOrNull() ?: 0',
+  'diff --git a/shared/data/src/commonTest/kotlin/com/x/ParserTest.kt b/shared/data/src/commonTest/kotlin/com/x/ParserTest.kt',
+  'new file mode 100644',
+  '--- /dev/null',
+  '+++ b/shared/data/src/commonTest/kotlin/com/x/ParserTest.kt',
+  '@@ -0,0 +1,3 @@',
+  '+    @Test fun `a crash input parses`() { assertEquals(0, parse("x")) }',
+].join('\n');
+const testOnlyDiff = fixDiff.split('\n').slice(6).join('\n');
+
+const base = { exception, anchor: frameAnchor, diff: fixDiff };
+
+test('fails before with the crash and its frame, passes after, suite green: proven', () => {
+  assert.deepEqual(decide({ ...base, baseRun: crashed, headRun: pass, suiteRun: pass }), { ok: true, result: 'proven' });
+});
+
+test('passes on base and crashes on the release tag: fixed on main', () => {
+  assert.deepEqual(decide({ ...base, diff: testOnlyDiff, baseRun: pass, tagRun: crashed }), { ok: true, result: 'fixed-on-main' });
+});
+
+test('passes on base with no tag run: the test does not reproduce the crash', () => {
+  const r = decide({ ...base, baseRun: pass, headRun: pass, suiteRun: pass });
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /passes before the fix/);
+});
+
+test('a compile failure on base is not the crash', () => {
+  const r = decide({ ...base, baseRun: { status: 'error' }, headRun: pass, suiteRun: pass });
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /fails before for another reason/);
+});
+
+test('the right exception without the crash frame never reached app code', () => {
+  const r = decide({ ...base, baseRun: { ...crashed, stack: 'java.lang.IllegalArgumentException: bad\n\tat kotlin.text.StringsKt.toInt(Strings.kt:1)' }, headRun: pass, suiteRun: pass });
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /never reached app code/);
+});
+
+test('another exception type is rejected', () => {
+  const r = decide({ ...base, baseRun: { ...crashed, failureType: 'java.lang.AssertionError' }, headRun: pass, suiteRun: pass });
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /AssertionError/);
+});
+
+test('a test that throws the exception itself is rejected, even with the class in its message', () => {
+  const selfThrown = {
+    status: 'fail',
+    failureType: exception,
+    stack: `java.lang.IllegalArgumentException: Key ${messageAnchor.text}:currentTab was used multiple times\n\tat com.x.TabTest.crashes(TabTest.kt:5)`,
+  };
+  const diff = fixDiff.replaceAll('ParserTest', 'TabTest');
+  const r = decide({ exception, anchor: messageAnchor, diff, baseRun: selfThrown, headRun: pass, suiteRun: pass });
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /thrown by the test itself/);
+});
+
+test('a message anchor is matched in the failure message', () => {
+  const composeCrash = {
+    status: 'fail',
+    failureType: exception,
+    stack: `java.lang.IllegalArgumentException: Key ${messageAnchor.text}:currentTab was used multiple times\n\tat androidx.compose.runtime.saveable.SaveableStateHolderImpl.SaveableStateProvider(SaveableStateHolder.kt:88)`,
+  };
+  assert.deepEqual(decide({ exception, anchor: messageAnchor, diff: fixDiff, baseRun: composeCrash, headRun: pass, suiteRun: pass }), { ok: true, result: 'proven' });
+});
+
+test('still failing with the fix, or a red suite, is rejected', () => {
+  assert.match(decide({ ...base, baseRun: crashed, headRun: crashed, suiteRun: pass }).reason, /still fails/);
+  assert.match(decide({ ...base, baseRun: crashed, headRun: pass, suiteRun: { status: 'fail' } }).reason, /suite/);
+});
+
+test('a diff with only tests has no fix in source', () => {
+  const r = decide({ ...base, diff: testOnlyDiff, baseRun: crashed, headRun: pass, suiteRun: pass });
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /no fix in source/);
+});
+
+test('loosening an existing test, @Ignore, sleeps and retries are rejected', () => {
+  const edits = [
+    ['diff --git a/a/src/commonTest/kotlin/OldTest.kt b/a/src/commonTest/kotlin/OldTest.kt', '--- a/a/src/commonTest/kotlin/OldTest.kt', '+++ b/a/src/commonTest/kotlin/OldTest.kt', '-        assertEquals(3, count)'],
+    ['+++ b/a/src/commonTest/kotlin/NewTest.kt', '+    @Ignore'],
+    ['+++ b/a/src/commonTest/kotlin/NewTest.kt', '+        Thread.sleep(2000)'],
+    ['+++ b/functions/test/x.test.ts', "+  it('works', { retry: 3 }, () => {})"],
+  ];
+  for (const lines of edits) {
+    const r = decide({ ...base, diff: `${fixDiff}\n${lines.join('\n')}`, baseRun: crashed, headRun: pass, suiteRun: pass });
+    assert.equal(r.ok, false, lines.at(-1));
+  }
+});
+
+test('diffFacts lists new and changed test files and source files', () => {
+  assert.deepEqual(diffFacts(fixDiff), {
+    testFiles: ['shared/data/src/commonTest/kotlin/com/x/ParserTest.kt'],
+    sourceFiles: ['shared/data/src/commonMain/kotlin/com/x/Parser.kt'],
+    problems: [],
+  });
+});
+
+test('JUnit XML gives the failure type and stack of the matching test', () => {
+  const xml = `<?xml version="1.0"?><testsuite><testcase name="a crash input parses" classname="com.x.ParserTest" time="0.1">
+<failure message="bad" type="java.lang.IllegalArgumentException">java.lang.IllegalArgumentException: bad
+\tat com.x.Parser.parse(Parser.kt:12)</failure></testcase><testcase name="other" classname="com.x.ParserTest"/></testsuite>`;
+  assert.deepEqual(parseJUnit([xml]), {
+    status: 'fail',
+    failureType: 'java.lang.IllegalArgumentException',
+    stack: 'java.lang.IllegalArgumentException: bad\n\tat com.x.Parser.parse(Parser.kt:12)',
+    ran: ['com.x.ParserTest'],
+  });
+  assert.deepEqual(parseJUnit(['<testsuite><testcase name="a" classname="b"/></testsuite>']), { status: 'pass', ran: ['b'] });
+  assert.deepEqual(parseJUnit([]), { status: 'error' });
+});
+
+test('vitest JSON gives the error name and stack', () => {
+  const json = JSON.stringify({ testResults: [{ name: '/w/functions/test/parse.test.ts', assertionResults: [
+    { status: 'failed', failureMessages: ['TypeError: Cannot read properties of undefined\n    at parse (src/parse.ts:3:9)'] },
+  ] }] });
+  assert.deepEqual(parseVitest(json), {
+    status: 'fail',
+    failureType: 'TypeError',
+    stack: 'TypeError: Cannot read properties of undefined\n    at parse (src/parse.ts:3:9)',
+    ran: ['/w/functions/test/parse.test.ts'],
+  });
+  assert.deepEqual(parseVitest(JSON.stringify({ testResults: [{ name: 'a.test.ts', assertionResults: [{ status: 'passed' }] }] })), { status: 'pass', ran: ['a.test.ts'] });
+  assert.deepEqual(parseVitest(JSON.stringify({ testResults: [] })), { status: 'error' });
+});
+
+// Found by the end-of-build review, 2026-10-28.
+
+test('a message anchor is only matched in the message, not in a test frame', () => {
+  const libraryThrow = {
+    status: 'fail',
+    failureType: exception,
+    stack: 'java.lang.IllegalArgumentException: Invalid UUID string: x\n\tat java.util.UUID.fromString(UUID.java:1)\n\t' +
+      `at ${messageAnchor.text}Test.crashes(HomeTabTest.kt:5)`,
+  };
+  const r = decide({ exception, anchor: messageAnchor, diff: fixDiff, baseRun: libraryThrow, headRun: pass, suiteRun: pass });
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /never reached app code/);
+});
+
+test('a frame anchor is only matched in a frame, not in the message', () => {
+  const inMessage = { ...crashed, stack: `java.lang.IllegalArgumentException: ${frameAnchor.text} said no\n\tat kotlin.text.StringsKt.toInt(Strings.kt:1)` };
+  assert.equal(decide({ ...base, baseRun: inMessage, headRun: pass, suiteRun: pass }).ok, false);
+});
+
+test('a throw from an unchanged test helper counts as the test itself', () => {
+  const fromHelper = { ...crashed, stack: 'java.lang.IllegalArgumentException: bad\n\tat com.x.Fakes.boom(TestFakes.kt:3)\n\tat com.example.app.data.Parser.parse(Parser.kt:12)' };
+  const r = decide({ ...base, baseRun: fromHelper, headRun: pass, suiteRun: pass, knownTestFiles: ['shared/data/src/commonTest/kotlin/com/x/TestFakes.kt'] });
+  assert.match(r.reason, /thrown by the test itself/);
+});
+
+test('a vitest frame thrown from the test file counts as the test itself', () => {
+  const diff = fixDiff.replaceAll('shared/data/src/commonTest/kotlin/com/x/ParserTest.kt', 'functions/test/parse.test.ts');
+  const run = { status: 'fail', failureType: 'TypeError', stack: 'TypeError: boom\n    at /w/functions/test/parse.test.ts:4:11' };
+  const r = decide({ exception: 'TypeError', anchor: { kind: 'frame', text: 'parse' }, diff, baseRun: run, headRun: pass, suiteRun: pass });
+  assert.match(r.reason, /thrown by the test itself/);
+});
+
+test('deleting or moving a test file, qualified @Ignore, assumptions and build edits are rejected', () => {
+  const edits = [
+    ['diff --git a/a/src/commonTest/kotlin/ATest.kt b/a/src/commonTest/kotlin/ATest.kt', 'deleted file mode 100644', '--- a/a/src/commonTest/kotlin/ATest.kt', '+++ /dev/null', '-class ATest'],
+    ['+++ b/a/src/commonTest/kotlin/NewTest.kt', '+    @kotlin.test.Ignore'],
+    ['+++ b/a/src/commonTest/kotlin/NewTest.kt', '+    @org.junit.Ignore'],
+    ['+++ b/a/src/commonTest/kotlin/NewTest.kt', '+        assumeTrue(false)'],
+    ['--- a/shared/data/build.gradle.kts', '+++ b/shared/data/build.gradle.kts', '+    filter { excludeTestsMatching("*Old*") }'],
+    ['--- a/.claude/skills/crash-fix/lib/proof.mjs', '+++ b/.claude/skills/crash-fix/lib/proof.mjs', '+  return { ok: true }'],
+  ];
+  for (const lines of edits) {
+    const r = decide({ ...base, diff: `${fixDiff}\n${lines.join('\n')}`, baseRun: crashed, headRun: pass, suiteRun: pass });
+    assert.equal(r.ok, false, lines.at(-1));
+  }
+});
+
+test("a filter that does not run the branch's new test is rejected", () => {
+  const r = decide({ ...base, baseRun: { ...crashed, ran: ['com.x.SomeOtherTest'] }, headRun: pass, suiteRun: pass });
+  assert.match(r.reason, /does not run the branch's new test/);
+  assert.equal(decide({ ...base, baseRun: { ...crashed, ran: ['com.x.ParserTest'] }, headRun: pass, suiteRun: pass }).ok, true);
+});

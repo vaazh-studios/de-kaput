@@ -1,0 +1,26 @@
+{
+  "name": "@vaazh-studios/de-kaput",
+  "version": "0.0.1",
+  "description": "Reproduce the crash with a test, fix it, open a pull request with proof. For native Android, native iOS and KMP apps.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vaazh-studios/de-kaput.git"
+  },
+  "type": "module",
+  "bin": {
+    "dekaput": "bin/dekaput.mjs",
+    "de-kaput": "bin/dekaput.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "RUNBOOK.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\""
+  }
+}

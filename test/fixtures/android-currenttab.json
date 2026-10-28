@@ -1,0 +1,12 @@
+{
+  "issueId": "e044059c5755177f4b64b53959007b68",
+  "platform": "ANDROID",
+  "errorType": "FATAL",
+  "title": "androidx.compose.runtime.saveable.SaveableStateHolderImpl.SaveableStateProvider$lambda$0$1$0",
+  "subtitle": "java.lang.IllegalArgumentException - Key com.example.app.ui.tabs.HomeTab:currentTab was used multiple times ",
+  "version": "1.4 (77)",
+  "device": "Google (sdk_gphone16k_arm64)",
+  "os": "Unknown (17)",
+  "exceptions": "java.lang.IllegalArgumentException: Key com.example.app.ui.tabs.HomeTab:currentTab was used multiple times \nat androidx.compose.runtime.saveable.SaveableStateHolderImpl.SaveableStateProvider$lambda$0$1$0 (SaveableStateHolder.kt:88)\nat androidx.compose.runtime.saveable.SaveableStateHolderImpl$$ExternalSyntheticLambda1.invoke (D8$$SyntheticClass)\nat androidx.compose.runtime.DisposableEffectImpl.onRemembered (Effects.kt:85)\nat androidx.compose.runtime.CompositionImpl.applyChanges (Composition.kt:1160)\nat android.view.Choreographer.doFrame (Choreographer.java:1205)\n... frames omitted ...",
+  "threads": ""
+}

@@ -1,0 +1,12 @@
+{
+  "issueId": "b3b6ecdac959d8890d34039326ee5da1",
+  "platform": "ANDROID",
+  "errorType": "FATAL",
+  "title": "com.example.app.scene.MeshBuilder.box",
+  "subtitle": "java.lang.OutOfMemoryError",
+  "version": "1.4 (77)",
+  "device": "Google (sdk_gphone64_arm64)",
+  "os": "Unknown (16)",
+  "exceptions": "java.lang.OutOfMemoryError\nat com.example.app.scene.MeshBuilder.box (MeshBuilder.kt:40)\n... frames omitted ...",
+  "threads": ""
+}

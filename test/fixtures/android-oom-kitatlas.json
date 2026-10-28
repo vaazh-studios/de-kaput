@@ -1,0 +1,12 @@
+{
+  "issueId": "a2bfa6834126edd292fa0c0a37b13520",
+  "platform": "ANDROID",
+  "errorType": "FATAL",
+  "title": "com.example.app.scene.TileAtlas.compose",
+  "subtitle": "java.lang.OutOfMemoryError",
+  "version": "1.4 (77)",
+  "device": "Google (sdk_gphone64_arm64)",
+  "os": "Unknown (16)",
+  "exceptions": "java.lang.OutOfMemoryError: Failed to allocate a 6291472 byte allocation with 2739472 free bytes and 2675KB until OOM, target footprint 201326592, growth limit 201326592\nat com.example.app.scene.TileAtlas.compose (TileAtlas.kt:59)\nat com.example.app.scene.SceneAssets.bakedChunks (SceneAssets.kt:309)\nat androidx.compose.runtime.RecomposeScopeImpl.compose (RecomposeScopeImpl.kt:201)\n... frames omitted ...",
+  "threads": ""
+}

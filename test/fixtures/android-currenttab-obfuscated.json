@@ -1,0 +1,13 @@
+{
+  "issueId": "f26e8107ace4f9542b53486a6a1a42af",
+  "platform": "ANDROID",
+  "errorType": "FATAL",
+  "title": "androidx.compose.runtime.saveable.SaveableStateHolderImpl.SaveableStateProvider$lambda$0$1$0",
+  "subtitle": "java.lang.IllegalArgumentException - Key sm8:currentTab was used multiple times ",
+  "version": "1.4 (75)",
+  "device": "samsung (SM-G998N)",
+  "os": "Unknown (15)",
+  "revision": "1f0e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c",
+  "exceptions": "java.lang.IllegalArgumentException: Key sm8:currentTab was used multiple times \nat androidx.compose.runtime.saveable.SaveableStateHolderImpl.SaveableStateProvider$lambda$0$1$0 (SaveableStateHolderImpl.java:88)\nat androidx.compose.runtime.DisposableEffectImpl.onRemembered (Effects.kt:85)\nat androidx.compose.runtime.CompositionImpl.applyChanges (Composition.kt:1160)\nat android.view.Choreographer.doFrame (Choreographer.java:1132)\nat android.os.Looper.loopOnce (Looper.java:257)\n... frames omitted ...",
+  "threads": ""
+}

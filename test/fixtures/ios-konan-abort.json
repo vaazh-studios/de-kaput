@@ -1,0 +1,12 @@
+{
+  "issueId": "c7a035463b2af83bb58771ddecd42a03",
+  "platform": "IOS",
+  "errorType": "FATAL",
+  "title": "[ExampleApp] konan::consoleFlush()",
+  "subtitle": "SIGABRT (ABORT)",
+  "version": "1.4 (77)",
+  "device": "Apple (iOS Simulator (iPhone))",
+  "os": "iOS (17.5.0)",
+  "exceptions": "",
+  "threads": "Thread:  (crashed)\nat __pthread_kill\nat pthread_kill\nat abort\nat konan::consoleFlush()\nat (anonymous namespace)::TerminateHandler::queuedHandler()\nat Kotlin_processUnhandledException\nat kfun:com.example.app.crashreporting.installUnhandledExceptionReporter$1.$<bridge-DNN>invoke(kotlin.Throwable){}#internal (Result.kt:96)\nat kfun:kotlinx.coroutines#handleCoroutineException(kotlin.coroutines.CoroutineContext;kotlin.Throwable){} (CoroutineExceptionHandlerImpl.common.kt:49)\nat kfun:kotlinx.coroutines.DispatchedTask#run(){} (DispatchedTask.kt:109)\n... frames omitted ..."
+}

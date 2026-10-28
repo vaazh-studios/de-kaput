@@ -1,0 +1,69 @@
+// dekaput open-pr: push the branch and open a normal (not draft) pull request,
+// only with a proof receipt that still matches the branch.
+//
+// The agent writes the human part of the body (what crashed, why, what the fix
+// does, what was not verified). open-pr appends the proof from the receipt,
+// so a PR can never go out without it.
+
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { defaultBranch, git, repoRoot } from './git.mjs';
+import { PR_LABEL } from './list.mjs';
+import { checkReceipt } from './receipt.mjs';
+
+export const OPEN_PR_OPTIONS = {
+  title: { type: 'string' },
+  'body-file': { type: 'string' },
+  // Further Crashlytics issue ids this PR also answers (an R8-renamed twin).
+  also: { type: 'string', multiple: true, default: [] },
+};
+
+const fence = (text) => ['```text', text ?? '', '```'].join('\n');
+
+export function proofSection(receipt, also = []) {
+  const { runs } = receipt;
+  const lines = [
+    '## Proof (de-kaput)',
+    '',
+    receipt.result === 'fixed-on-main'
+      ? `This crash is already fixed on \`${receipt.base.slice(0, 8)}\` and not in the release \`${receipt.release}\`. The test crashes on the release and passes here, so it keeps the crash fixed.`
+      : `The test fails on \`${receipt.base.slice(0, 8)}\` with the crash's exception and passes with the fix; the whole suite is green.`,
+    '',
+    `- Test: \`${receipt.test}\` (\`${receipt.task}\`)`,
+    `- Crash: \`${receipt.exception}\`, reaching ${receipt.anchor.kind === 'message' ? 'the class named in its message' : 'the frame'} \`${receipt.anchor.text}\``,
+    `- Base: \`${receipt.base}\`${receipt.release ? `; release: \`${receipt.release}\`` : ''}`,
+    '',
+  ];
+  if (runs.tagRun) lines.push('On the release (must crash):', fence(runs.tagRun.stack), '');
+  if (runs.baseRun?.status === 'fail') lines.push('On the base (must crash):', fence(runs.baseRun.stack), '');
+  lines.push(`On the base: ${runs.baseRun.status}. With the change: ${runs.headRun?.status ?? 'not run'}. Whole suite: ${runs.suiteRun?.status ?? 'not run'}.`);
+  lines.push('', `Crashlytics issue ${[receipt.issue, ...also].join(', ')}. Receipt \`${receipt.head.slice(0, 8)}\`, diff sha256 \`${receipt.diffSha256.slice(0, 16)}\`.`);
+  return lines.join('\n');
+}
+
+export function openPr(opts) {
+  if (!opts.title) throw new Error('--title is required');
+  if (!opts['body-file']) throw new Error('--body-file is required (what crashed, why, what changed, what was not verified)');
+  const root = repoRoot();
+  const branch = git(['rev-parse', '--abbrev-ref', 'HEAD'], root);
+  const base = defaultBranch(root).replace(/^origin\//, '');
+  if (branch === 'HEAD' || branch === base) throw new Error(`run open-pr on the fix branch, not ${branch}`);
+  const check = checkReceipt(root);
+  if (!check.ok) throw new Error(check.reason);
+
+  const body = `${fs.readFileSync(opts['body-file'], 'utf8').trim()}\n\n${proofSection(check.receipt, opts.also)}\n`;
+  const bodyFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'dekaput-pr-')), 'body.md');
+  fs.writeFileSync(bodyFile, body);
+
+  execFileSync('git', ['push', '-u', 'origin', branch], { cwd: root, stdio: ['ignore', 'ignore', 'inherit'] });
+  // The label is how list finds de-kaput PRs; creating it when it exists fails harmlessly.
+  try {
+    execFileSync('gh', ['label', 'create', PR_LABEL, '--color', 'B60205', '--description', 'Crash fix proven by a test (de-kaput)'], { cwd: root, stdio: 'ignore' });
+  } catch { /* already there */ }
+  return execFileSync('gh', ['pr', 'create', '--base', base, '--head', branch, '--title', opts.title, '--body-file', bodyFile, '--label', PR_LABEL], {
+    cwd: root,
+    encoding: 'utf8',
+  }).trim();
+}

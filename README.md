@@ -4,7 +4,7 @@ Your app went kaput. de-kaput reproduces the crash with a test, fixes it, and op
 
 It never fixes blind: no pull request without a test that fails with the crash's own exception before the fix and passes after it. A person always reviews and merges.
 
-> **Status: early.** The first goal is one crash going end to end, from Crashlytics to a pull request with its test. Configuration comes after that. See [docs/plans](docs/plans).
+> **Status: early.** The first goal is one crash going end to end, from Crashlytics to a pull request with its test. Configuration comes after that.
 
 ## How it works
 

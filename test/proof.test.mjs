@@ -111,7 +111,7 @@ test('loosening an existing test, @Ignore, sleeps and retries are rejected', () 
 test('diffFacts lists new and changed test files and source files', () => {
   assert.deepEqual(diffFacts(fixDiff), {
     testFiles: ['shared/data/src/commonTest/kotlin/com/x/ParserTest.kt'],
-    testTypes: [],
+    declaredTests: [],
     sourceFiles: ['shared/data/src/commonMain/kotlin/com/x/Parser.kt'],
     problems: [],
   });
@@ -259,7 +259,7 @@ test('a test class added to an existing test file counts as the branch\'s test (
   const added = swiftDiff
     .replace('new file mode 100644\n--- /dev/null', '--- a/Tests/WordbookTests/ParserTests.swift')
     .replace('+    func testCountOfNil()', '+final class CartCrashTests: XCTestCase {\n+    func testCountOfNil()');
-  assert.deepEqual(diffFacts(added).testTypes, ['CartCrashTests']);
+  assert.deepEqual(diffFacts(added).declaredTests, ['CartCrashTests', 'testCountOfNil']);
   const run = { ...trap(appFrame, { symbol: 'CartCrashTests.testCountOfNil()', file: 'ParserTests.swift' }), ran: ['CartCrashTests'] };
   assert.equal(decide({ ...swift, diff: added, baseRun: run, headRun: pass, suiteRun: pass }).ok, true);
   assert.match(decide({ ...swift, diff: added, baseRun: { ...run, ran: ['OtherTests'] } }).reason, /does not run the branch's new test/);
@@ -294,4 +294,12 @@ test('an exception XCTest caught has no files: own frames decide app code or the
   assert.match(decide({ ...ui, baseRun: caught(inTest) }).reason, /thrown by the test itself \(ParserTests.testCountOfNil\(\)\)/);
   const helper = { symbol: 'closure #1 in static NetworkClientTests.makeItems()', file: null, own: true };
   assert.match(decide({ ...ui, baseRun: caught(helper, app, inTest), knownTestFiles: ['Tests/WordbookTests/NetworkClientTests.swift'] }).reason, /thrown by the test itself/);
+});
+
+test('Swift Testing: a free @Test function is the branch\'s test, and a crash it throws itself is not the crash', () => {
+  const freeDiff = swiftDiff.replace('+    func testCountOfNil() { XCTAssertEqual(Parser.count(of: nil), 0) }', '+@Test func countOfNilIsZero() { #expect(Parser.count(of: nil) == 0) }');
+  const ownFrame = { symbol: 'countOfNilIsZero()', file: 'ParserTests.swift' };
+  const run = { ...trap(appFrame, ownFrame), ran: ['countOfNilIsZero'] };
+  assert.equal(decide({ ...swift, diff: freeDiff, baseRun: run, headRun: pass, suiteRun: pass }).ok, true);
+  assert.match(decide({ ...swift, diff: freeDiff, baseRun: { ...trap(ownFrame), ran: ['countOfNilIsZero'] } }).reason, /thrown by the test itself/);
 });

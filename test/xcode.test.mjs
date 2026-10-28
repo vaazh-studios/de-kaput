@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  caughtFailure, crashFailure, crashReportFor, fatalMessage, ownImages, parseCaughtException, parseCrashLog, parseTestResults, pickDestination,
+  caughtFailure, crashFailure, crashReportFor, fatalMessage, ownImages, parseCaughtException, parseCrashLog, parseTestResults, pickDestination, uncaughtIn,
 } from '../src/runners/xcode.mjs';
 
 const fixture = (name) => fs.readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8');
@@ -144,4 +144,30 @@ test("without an attached crash log, the crash reporter's report of the test is 
   assert.equal(parseCrashLog(crashReportFor('testCountOfNilDoesNotCrash()', since, dir)).frames[2].symbol, 'static Parser.count(of:)');
   assert.equal(crashReportFor('testOther()', since, dir), null);
   assert.equal(crashReportFor('testCountOfNilDoesNotCrash()', since, path.join(dir, 'missing')), null);
+});
+
+test('Swift Testing: a function outside any suite ran by its own name', () => {
+  const free = { name: 'firstOfEmpty()', nodeIdentifier: 'firstOfEmpty()', nodeType: 'Test Case', result: 'Failed', children: [{ name: 'Crash: xctest at static Runner.run()', nodeType: 'Failure Message' }] };
+  const { ran, failed } = parseTestResults({ testNodes: [{ nodeType: 'Test Plan', children: [{ nodeType: 'Unit test bundle', name: 'WordbookTests', children: [free] }] }] });
+  assert.deepEqual(ran, ['firstOfEmpty']);
+  assert.equal(failed.id, 'firstOfEmpty()');
+});
+
+test("an uncaught NSException in a simulator: the throw stack from the crash log, its name from the run's output", () => {
+  const report = {
+    exception: { type: 'EXC_CRASH', signal: 'SIGABRT' },
+    lastExceptionBacktrace: [{ imageIndex: 0, symbol: '__exceptionPreprocess' }, { imageIndex: 1, symbol: 'static Parser.raise()', sourceFile: 'Parser.swift', sourceLine: 14 }],
+    faultingThread: 0,
+    threads: [{ frames: [{ imageIndex: 0, symbol: '__pthread_kill' }] }],
+    usedImages: [{ name: 'CoreFoundation' }, { name: 'WordbookTests' }],
+  };
+  const crash = parseCrashLog(`{"app_name":"xctest"}\n${JSON.stringify(report)}`);
+  assert.equal(crash.type, 'EXC_CRASH');
+  assert.equal(crash.thrown, true);
+  assert.deepEqual(crash.frames.map((f) => f.symbol), ['__exceptionPreprocess', 'static Parser.raise()']);
+  const output = '◇ Test raises() started.\n✘ Test raises() recorded an issue: Issue recorded\n  failed: caught "NSInvalidArgumentException", "planted"\n';
+  assert.deepEqual(uncaughtIn(output, 'raises()'), { type: 'NSInvalidArgumentException', message: 'planted' });
+  assert.deepEqual(uncaughtIn("*** Terminating app due to uncaught exception 'NSRangeException', reason: 'index 3 beyond bounds'", 'testA()'), { type: 'NSRangeException', message: 'index 3 beyond bounds' });
+  const failure = crashFailure({ ...crash, ...uncaughtIn(output, 'raises()') });
+  assert.equal(failure.stack.split('\n').slice(0, 2).join('\n'), 'NSInvalidArgumentException (SIGABRT): planted\n\tat static Parser.raise() (Parser.swift:14)');
 });

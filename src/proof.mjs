@@ -50,12 +50,13 @@ function headerPath(raw) {
   return text.slice(1, -1).replace(/\\(["\\nt])/g, (_, c) => escaped[c]);
 }
 
-// A class or object a test line declares: "+final class CartCrashTests: XCTestCase {", "+class ParserTest {".
-const DECLARED_TYPE = /\b(?:class|struct|extension|object)\s+([A-Za-z_]\w*)/g;
+// A test class or function a test line declares: "+final class CartCrashTests: XCTestCase {",
+// "+class ParserTest {", "+@Test func emptyCart() {" (Swift Testing runs a function outside a suite by its name).
+const DECLARED_TEST = /\b(?:class|struct|extension|object|func)\s+([A-Za-z_]\w*)/g;
 
 export function diffFacts(diff) {
   const testFiles = new Set();
-  const testTypes = new Set();
+  const declaredTests = new Set();
   const sourceFiles = new Set();
   const problems = [];
   let oldFile = null;
@@ -87,12 +88,12 @@ export function diffFacts(diff) {
       continue;
     }
     testFiles.add(file);
-    for (const [, name] of line.matchAll(DECLARED_TYPE)) testTypes.add(name);
+    for (const [, name] of line.matchAll(DECLARED_TEST)) declaredTests.add(name);
     for (const [pattern, what] of FORBIDDEN_IN_TESTS) {
       if (pattern.test(line)) problems.push(`${what} in ${file}`);
     }
   }
-  return { testFiles: [...testFiles], testTypes: [...testTypes], sourceFiles: [...sourceFiles], problems: [...new Set(problems)] };
+  return { testFiles: [...testFiles], declaredTests: [...declaredTests], sourceFiles: [...sourceFiles], problems: [...new Set(problems)] };
 }
 
 const FRAME_LINE = /^\s*at\s+/;
@@ -138,7 +139,7 @@ const typeOf = (symbol) => {
 const framesOf = (run) => (run.frames ? { message: run.message ?? '', frames: run.frames } : splitStack(run.stack));
 
 // Why a run on base is not the crash, or null when it is.
-function notTheCrash(run, { exception, anchor, testFiles, testTypes = [], knownTestFiles }) {
+function notTheCrash(run, { exception, anchor, testFiles, declaredTests = [], knownTestFiles }) {
   if (run.status === 'error') return 'fails before for another reason: the test did not compile or did not run';
   if (run.status === 'pass') return 'passes before the fix: the test does not reproduce the crash';
   if (![run.failureType, run.signal].some((t) => t && simpleName(t) === simpleName(exception))) {
@@ -148,7 +149,7 @@ function notTheCrash(run, { exception, anchor, testFiles, testTypes = [], knownT
   // The first frame of own code: one with a source file, or one the runner marks own (a Swift trap's first frames are the runtime's).
   const top = stack.frames.find((f) => (f.file && !f.file.startsWith('<')) || f.own);
   const testNames = new Set([...testFiles, ...knownTestFiles].map(baseName));
-  const testClasses = new Set([...[...testFiles, ...knownTestFiles].map(testId), ...testTypes]);
+  const testClasses = new Set([...[...testFiles, ...knownTestFiles].map(testId), ...declaredTests]);
   const ownTest = top && (top.file ? testNames.has(top.file) : testClasses.has(typeOf(top.symbol)));
   if (ownTest) return `the ${exception} is thrown by the test itself (${top.file ?? top.symbol}), not by app code`;
   if (!reaches(anchor, stack)) {
@@ -164,11 +165,11 @@ export function decide({ exception, anchor, diff, baseRun, headRun, suiteRun, ta
   if (facts.testFiles.length === 0) return { ok: false, reason: 'no new or changed test in the branch' };
   // The filter must run the branch's test: a test file's own class, or a class the branch adds to a test file
   // (an Xcode project that lists its files in project.pbxproj takes a new test class in an existing file).
-  const branchTests = [...facts.testFiles.map(testId), ...facts.testTypes];
+  const branchTests = [...facts.testFiles.map(testId), ...facts.declaredTests];
   if (baseRun.ran && !baseRun.ran.map(testId).some((name) => branchTests.includes(name))) {
     return { ok: false, reason: "the test filter does not run the branch's new test" };
   }
-  const context = { exception, anchor, testFiles: facts.testFiles, testTypes: facts.testTypes, knownTestFiles };
+  const context = { exception, anchor, testFiles: facts.testFiles, declaredTests: facts.declaredTests, knownTestFiles };
 
   const onBase = notTheCrash(baseRun, context);
   if (baseRun.status === 'pass' && tagRun) {

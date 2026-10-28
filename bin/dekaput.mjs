@@ -19,7 +19,7 @@ const USAGE = `usage:
                (without .github/de-kaput.yml: --app-package <pkg> [--ignore-frame <pkg>] [--probe <regex>])
   dekaput verify --issue <id> --test <filter> --exception <class or signal> [--gradle-task <:module:task>]
                  --anchor <frame or class> [--anchor-kind frame|message] [--release <ref>]
-                 (an Xcode filter is Target/Class/method; the exception EXC_BREAKPOINT, SIGABRT or an NSException name)
+                 (an Xcode filter is Target/Class/method or Target/function(); the exception EXC_BREAKPOINT, SIGABRT or an NSException name)
   dekaput open-pr --title <title> --body-file <file> [--also <issue id>]`;
 
 function list(args) {

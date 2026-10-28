@@ -13,7 +13,7 @@ With the Firebase MCP server, for each app's `crashlytics-app-id` in `.github/de
 3. For each issue: `crashlytics_batch_get_events` on its `sampleEvent`, and `crashlytics_list_notes`.
 4. Write one file per issue to `.dekaput/events/<issue id>.json` with **only** these fields, copied verbatim:
    `issueId, platform, errorType, title, subtitle, version` (the version's `displayName`), `device` (its `displayName`), `os` (its `displayName`), `exceptions, threads`, `revision` (the event's `buildStamp` revision, when present), `issue: { id, title, subtitle, eventsCount, impactedUsersCount, uri }` (from the report) and `notes: [{ body, createTime }]`.
-   Never copy `user`, `installationUuid`, `customKeys`, `logs` or `breadcrumbs`.
+   Never copy `user`, `installationUuid`, `customKeys`, `logs` or `breadcrumbs`. Never commit `.dekaput/`: create `.dekaput/.gitignore` containing `*` before writing the events (`list` and `verify` add it too).
 
 ## 2. Build the queue
 
@@ -42,7 +42,7 @@ Work only in that worktree. Read the repo's own agent instructions (`AGENTS.md`,
 
 Write the test against the code as it is on the default branch. It calls the code the way the app reaches it and lets the failure escape. Do not use `assertFailsWith`, do not throw the exception yourself, do not use reflection, and do not edit existing tests. Name the test after what the user saw, not the issue id; put the issue id in its doc comment. Commit it.
 
-On iOS, write an XCTest in the app's unit test target (its `*Tests/` folder) and let the crash happen: the Swift trap or exception crashes the test, and its crash log is the evidence. In an Xcode project that lists its files in `project.pbxproj`, add the test class to the end of an existing test file in that target, because `verify` rejects edits to project files. A Swift package or an Xcode 16 synchronized folder can take a new file; name it after its test class. Do not use `XCTExpectFailure`, `withKnownIssue` or `XCTSkip`.
+On iOS, write an XCTest or a Swift Testing `@Test` in the app's unit test target (its `*Tests/` folder) and let the crash happen: the Swift trap or exception crashes the test, and its crash log is the evidence. In an Xcode project that lists its files in `project.pbxproj`, add the test class to the end of an existing test file in that target, because `verify` rejects edits to project files. A Swift package or an Xcode 16 synchronized folder can take a new file; name it after its test class. Do not use `XCTExpectFailure`, `withKnownIssue` or `XCTSkip`.
 
 Budget: 3 ideas and 5 test attempts. If none reproduces the crash, add a `de-kaput:` note saying what you tried and what data is missing, remove the worktree, and go to the next crash.
 
@@ -54,7 +54,7 @@ npx @vaazh-studios/de-kaput verify --issue <id> --test '<filter>' \
   --release <release from list>
 ```
 
-The Gradle task comes from the config's module that holds the new test; pass `--gradle-task <:module:testTask>` when it has none. For an Xcode module, `--test` is `Target/Class/method`, `--exception` is the name `list` gave (`EXC_BREAKPOINT`, `EXC_BAD_ACCESS`, `SIGABRT` or an NSException name such as `NSRangeException`), and the module's suite is the test's own target. The first build in a fresh worktree can take a long time; run it in the background or with a long timeout.
+The Gradle task comes from the config's module that holds the new test; pass `--gradle-task <:module:testTask>` when it has none. For an Xcode module, `--test` is `Target/Class/method` (Swift Testing: `Target/Suite/function()`, or `Target/function()` outside a suite), `--exception` is the name `list` gave (`EXC_BREAKPOINT`, `EXC_BAD_ACCESS`, `SIGABRT` or an NSException name such as `NSRangeException`), and the module's suite is the test's own target. The first build in a fresh worktree can take a long time; run it in the background or with a long timeout.
 
 - **Fails on the base, and the fix is still to write:** fix the code (follow the repo's rules), commit, run `verify` again. It must report `proven`.
 - **Passes on the base and crashes on the release:** `fixed-on-main`. The crash is already fixed and not released yet. No fix is needed; the PR adds the test so it stays fixed.

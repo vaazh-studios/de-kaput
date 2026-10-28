@@ -1,6 +1,8 @@
 // Runs one xcodebuild test action on an iOS simulator and reads its result bundle.
 //
-// filter is an -only-testing identifier: Target, Target/Class or Target/Class/method.
+// filter is an -only-testing identifier: Target, Target/Class or Target/Class/method
+// (Swift Testing: Target/Suite/function() or Target/function()). Swift Testing
+// runs a target's tests in parallel, so one crash ends the others; verify runs one.
 // A test that crashed the test process gets its type and frames from its crash
 // log: the one the result bundle attaches, or else the one the Mac's crash
 // reporter wrote (xcodebuild skips a crash that comes seconds after another).
@@ -65,7 +67,8 @@ export function parseTestResults(tree) {
       return;
     }
     if (node.result === 'Skipped') return;
-    ran.add(suite ?? node.nodeIdentifier?.split('/')[0]);
+    // A Swift Testing function outside any suite ran by its own name.
+    ran.add(suite ?? methodOf(node.name));
     if (node.result === 'Failed' && !failed) {
       const messages = (node.children ?? []).filter((c) => c.nodeType === 'Failure Message').map((c) => c.name);
       failed = { id: node.nodeIdentifier, name: node.name, messages };
@@ -86,15 +89,18 @@ const frameOf = (images) => (f) => ({
 export function parseCrashLog(text) {
   const report = JSON.parse(text.slice(text.indexOf('\n') + 1));
   const toFrame = frameOf(report.usedImages ?? []);
-  // An uncaught NSException names itself in the application-specific info; its throw stack is lastExceptionBacktrace.
+  // An uncaught NSException's throw stack is lastExceptionBacktrace; a device's log also names it in the
+  // application-specific info, a simulator's does not (uncaughtIn reads the name from the run's output).
   const info = Object.values(report.asi ?? {}).flat().join('\n');
   const uncaught = /uncaught exception '([^']+)', reason: '([\s\S]*?)'/.exec(info);
+  const thrown = report.lastExceptionBacktrace;
   const crashed = report.threads?.[report.faultingThread]?.frames ?? [];
   return {
     type: uncaught?.[1] ?? report.exception?.type ?? null,
     signal: report.exception?.signal ?? null,
     message: uncaught?.[2] ?? '',
-    frames: (uncaught && report.lastExceptionBacktrace ? report.lastExceptionBacktrace : crashed).map(toFrame),
+    frames: (thrown ?? crashed).map(toFrame),
+    thrown: Boolean(thrown),
   };
 }
 
@@ -112,6 +118,14 @@ export function parseCaughtException(text, demangleAll = demangle) {
 }
 
 const methodOf = (testName) => testName.replace(/\(.*\)$/, '');
+
+// An uncaught NSException's name and reason as the run printed them: XCTest's
+// 'caught "Name", "reason"', or the runtime's "uncaught exception 'Name', reason: 'reason'".
+export function uncaughtIn(output, testName) {
+  const text = output.slice(Math.max(0, output.indexOf(methodOf(testName))));
+  const hit = /uncaught exception '([^']+)', reason: '([^\n]*?)'/.exec(text) ?? /caught "([^"]+)", "([^\n]*?)"/.exec(text);
+  return hit ? { type: hit[1], message: hit[2] } : null;
+}
 
 // The test's own crash report from the Mac's crash reporter: written since the
 // run started, by a process in a simulator, with the test method on a thread.
@@ -180,14 +194,18 @@ function failureOf(bundle, failed, output, since, own) {
   const { crashLog, description } = attachmentsOf(bundle, failed.id);
   const mark = (failure) => ({ ...failure, frames: failure.frames.map((f) => ({ ...f, own: own.has(f.image) })) });
   const report = crashLog ?? (crashed ? crashReportFor(failed.name, since) : null);
-  if (report) return crashFailure(mark(parseCrashLog(report)), fatalMessage(output, failed.name));
+  if (report) {
+    const crash = parseCrashLog(report);
+    const named = crash.thrown && /^(EXC_|SIG)/.test(crash.type ?? '') ? uncaughtIn(output, failed.name) : null;
+    return named ? crashFailure(mark({ ...crash, ...named })) : crashFailure(mark(crash), fatalMessage(output, failed.name));
+  }
   const caught = description && parseCaughtException(description);
   if (caught) return caughtFailure(mark(caught));
   if (crashed) {
     const signal = SIGNALS[/signal (\w+)/.exec(message)?.[1]?.toLowerCase()] ?? null;
     return { failureType: signal ?? 'crash', signal, message, frames: [], stack: `${message}\n(no crash log for it, in the result bundle or the crash reporter's folder)` };
   }
-  return { failureType: 'XCTest failure', signal: null, message, frames: [], stack: message };
+  return { failureType: 'a test assertion', signal: null, message, frames: [], stack: message };
 }
 
 export function xcodeRun({ dir, module, filter, destination, derivedData }) {

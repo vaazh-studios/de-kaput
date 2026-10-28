@@ -20,7 +20,7 @@ It never fixes blind: no pull request without a test that fails with the crash's
    A crash no test can reach gets a note on the Crashlytics issue instead, and the run moves on.
 4. You get **one pull request per crash**, each reviewed and merged on its own. `--max-prs` caps how many are open at once.
 
-Built for native Android, native iOS and Kotlin Multiplatform apps: Gradle runs the JVM tests, and `xcodebuild` runs XCTest on an iPhone simulator (Xcode 16 or newer). On iOS a crash's identity is its Mach exception or signal (`EXC_BREAKPOINT`, `EXC_BAD_ACCESS`, `SIGABRT`) or its NSException name, read from the crash log the simulator writes.
+Built for native Android, native iOS and Kotlin Multiplatform apps: Gradle runs the JVM tests, and `xcodebuild` runs XCTest and Swift Testing on an iPhone simulator (Xcode 16 or newer). On iOS a crash's identity is its Mach exception or signal (`EXC_BREAKPOINT`, `EXC_BAD_ACCESS`, `SIGABRT`) or its NSException name, read from the crash log the simulator writes.
 
 ## Configuration
 

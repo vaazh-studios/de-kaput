@@ -29,6 +29,18 @@ Inputs are command-line flags for now (module, test filter, exception, anchor, r
 
 Config file, Xcode and SwiftPM runners, the GitHub check that re-runs the proof in CI, bisect, the 3/3 and 5/5 repeat runs, scheduled runs, other crash sources.
 
-## First run
+## First run (2026-10-28)
 
-(filled in by task 6)
+**Result: vaazh-studios/snaplingo#17**, a normal PR labelled `de-kaput` that adds `RestoredTabSlotTest`, with the proof in its body and a `de-kaput:` note on both Crashlytics issues. `list` then reports the crash handled and nothing left on the release.
+
+What the run did:
+
+1. Latest release: Android 1.4 (75) (48 users). Crashlytics lists versions by event count and includes internal builds (1.4 (77), 6 users), so "latest" means the newest released version, not the first row.
+2. That release has one fatal crash, f26e8107 (2 users). Its message names the Words tab only by its R8 name (`Key sm8:currentTab ...`), so the first `list` saw no app code and skipped it.
+3. A rebuilt R8 mapping for the release commit did not match the shipped build (in it `sm8` is an unrelated inner class, the tab is `wm8`), so rebuilding is not a way to read R8 names. `list` now anchors on the message's own words when a class has only its R8 name ("currentTab was used multiple times"); searching the repo for them finds the one place that writes the key, `TabContentSlot.kt`. `--mapping` stays for teams that archive the release's mapping.
+4. `verify`: the test passes on main and crashes on the release commit with the production message, the real class name included. `fixed-on-main` in 1 min 26 s; keeping the compile cache (only `--rerun` on the test task) took it from 1 h 24 min in the prototype.
+5. `open-pr` first pushed the commit to snaplingo's `main` instead of a branch: `push.default=upstream` and a branch cut from `origin/main` that tracked it. Reverted on main (62ee56b0), fixed in `open-pr` (the push names `refs/heads/<branch>` and refuses the default branch, tested against that exact git setup) and in the runbook (`--no-track`), then the same test went out as #17.
+
+Fixed along the way: the proof section's wording for message-text anchors and for test-only PRs.
+
+Next: configuration (app id, packages, Gradle task, release refs in one file), then the Xcode runner.

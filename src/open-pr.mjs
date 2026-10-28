@@ -22,6 +22,13 @@ export const OPEN_PR_OPTIONS = {
 
 const fence = (text) => ['```text', text ?? '', '```'].join('\n');
 
+// A frame anchor names code; a message anchor is either a class the message names or the message's own words.
+const anchorPhrase = (anchor) => {
+  if (anchor.kind === 'frame') return `through the frame \`${anchor.text}\``;
+  if (/^[\w$]+(\.[\w$]+)+$/.test(anchor.text)) return `with the class \`${anchor.text}\` in its message`;
+  return `with the message text "${anchor.text}"`;
+};
+
 export function proofSection(receipt, also = []) {
   const { runs } = receipt;
   const lines = [
@@ -32,13 +39,14 @@ export function proofSection(receipt, also = []) {
       : `The test fails on \`${receipt.base.slice(0, 8)}\` with the crash's exception and passes with the fix; the whole suite is green.`,
     '',
     `- Test: \`${receipt.test}\` (\`${receipt.task}\`)`,
-    `- Crash: \`${receipt.exception}\`, reaching ${receipt.anchor.kind === 'message' ? 'the class named in its message' : 'the frame'} \`${receipt.anchor.text}\``,
+    `- Crash: \`${receipt.exception}\`, ${anchorPhrase(receipt.anchor)}`,
     `- Base: \`${receipt.base}\`${receipt.release ? `; release: \`${receipt.release}\`` : ''}`,
     '',
   ];
   if (runs.tagRun) lines.push('On the release (must crash):', fence(runs.tagRun.stack), '');
   if (runs.baseRun?.status === 'fail') lines.push('On the base (must crash):', fence(runs.baseRun.stack), '');
-  lines.push(`On the base: ${runs.baseRun.status}. With the change: ${runs.headRun?.status ?? 'not run'}. Whole suite: ${runs.suiteRun?.status ?? 'not run'}.`);
+  if (receipt.result === 'proven') lines.push(`With the fix the test ${runs.headRun?.status === 'pass' ? 'passes' : runs.headRun?.status}, and the whole suite ${runs.suiteRun?.status === 'pass' ? 'is green' : runs.suiteRun?.status}.`);
+  else lines.push('On the base the test passes.');
   lines.push('', `Crashlytics issue ${[receipt.issue, ...also].join(', ')}. Receipt \`${receipt.head.slice(0, 8)}\`, diff sha256 \`${receipt.diffSha256.slice(0, 16)}\`.`);
   return lines.join('\n');
 }

@@ -18,6 +18,13 @@ One crash per run. If the test already passes on your default branch but crashes
 
 Built for native Android, native iOS and Kotlin Multiplatform apps. Gradle first; Xcode next.
 
+## Use it with your agent
+
+- **Claude Code:** copy `skills/de-kaput/` into your project's `.claude/skills/`, then ask "fix the next crash with de-kaput".
+- **Codex:** add one line to your project's `AGENTS.md`: "To fix a Crashlytics crash, follow RUNBOOK.md from vaazh-studios/de-kaput, one crash per run."
+
+Until the npm package is published, run the CLI from a clone: `node <clone>/bin/dekaput.mjs` in place of `npx @vaazh-studios/de-kaput`.
+
 ## Credit
 
 The reproduce-first idea and the receipt-gated pull request come from [krezzoid/fixcrash](https://github.com/krezzoid/fixcrash) (MIT). de-kaput is a separate implementation that works with any coding agent.

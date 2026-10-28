@@ -33,7 +33,7 @@ Add `--ignore-frame <package>` for the app's own crash reporter, and `--probe <r
 
 ```bash
 git fetch origin
-git worktree add -b de-kaput/<first 8 of the issue id>-<slug> <a folder outside the checkout> origin/HEAD
+git worktree add --no-track -b de-kaput/<first 8 of the issue id>-<slug> <a folder outside the checkout> origin/HEAD
 ```
 
 Work only in that worktree. Read the repo's own agent instructions (`AGENTS.md`, `CLAUDE.md`) first.

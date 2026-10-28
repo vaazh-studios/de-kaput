@@ -43,6 +43,15 @@ export function proofSection(receipt, also = []) {
   return lines.join('\n');
 }
 
+// Push the fix branch to a branch of the same name on origin, always named in
+// full. A bare `git push origin <branch>` follows push.default, and with
+// push.default=upstream and a branch cut from origin/main that pushes to main
+// (it did, on the first live run).
+export function pushBranch(root, branch, base) {
+  if (branch === base) throw new Error(`refusing to push the default branch ${base}`);
+  execFileSync('git', ['push', '--set-upstream', 'origin', `HEAD:refs/heads/${branch}`], { cwd: root, stdio: ['ignore', 'ignore', 'inherit'] });
+}
+
 export function openPr(opts) {
   if (!opts.title) throw new Error('--title is required');
   if (!opts['body-file']) throw new Error('--body-file is required (what crashed, why, what changed, what was not verified)');
@@ -57,7 +66,7 @@ export function openPr(opts) {
   const bodyFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'dekaput-pr-')), 'body.md');
   fs.writeFileSync(bodyFile, body);
 
-  execFileSync('git', ['push', '-u', 'origin', branch], { cwd: root, stdio: ['ignore', 'ignore', 'inherit'] });
+  pushBranch(root, branch, base);
   // The label is how list finds de-kaput PRs; creating it when it exists fails harmlessly.
   try {
     execFileSync('gh', ['label', 'create', PR_LABEL, '--color', 'B60205', '--description', 'Crash fix proven by a test (de-kaput)'], { cwd: root, stdio: 'ignore' });

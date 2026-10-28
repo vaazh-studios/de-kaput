@@ -4,7 +4,7 @@ Your app went kaput. de-kaput reproduces the crash with a test, fixes it, and op
 
 It never fixes blind: no pull request without a test that fails with the crash's own exception before the fix and passes after it. A person always reviews and merges.
 
-> **Status: early.** One Android crash has gone end to end, from Crashlytics to a pull request with its test. The Xcode runner proves crashes on a sample Swift package.
+> **Status: early.** One Android crash has gone end to end, from Crashlytics to a pull request with its test. The Xcode runner has proven a crash in a Swift package and a UIKit crash in an app with app-hosted tests.
 
 ## How it works
 

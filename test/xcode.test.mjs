@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  caughtFailure, crashFailure, crashReportFor, failureLocation, fatalMessage, parseCaughtException, parseCrashLog, parseTestResults, pickDestination,
+  caughtFailure, crashFailure, crashReportFor, fatalMessage, ownImages, parseCaughtException, parseCrashLog, parseTestResults, pickDestination,
 } from '../src/runners/xcode.mjs';
 
 const fixture = (name) => fs.readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8');
@@ -69,18 +69,44 @@ test("a crash's stack starts at the first frame with a file and carries the Swif
     'EXC_BREAKPOINT (SIGTRAP): Fatal error: Unexpectedly found nil while unwrapping an Optional value\n\tat static Parser.count(of:) (Parser.swift:5)');
 });
 
-test("an exception XCTest caught: its name, reason and the demangled stack, located where XCTest says", () => {
+test('an exception XCTest caught: its name, reason and the demangled stack', () => {
   const names = { $s8Wordbook6ParserO5raiseyyFZ: 'static Parser.raise()', $s13WordbookTestsAAC9testRaiseyyF: 'WordbookTests.testRaise()' };
   const caught = parseCaughtException(fixture('ios-caught-exception.txt'), (symbols) => symbols.map((s) => names[s] ?? s));
   assert.equal(caught.type, 'NSInvalidArgumentException');
   assert.equal(caught.message, 'planted');
-  assert.equal(caught.frames[3].symbol, 'static Parser.raise()');
-  const failure = caughtFailure(caught, { file: 'Parser.swift', line: 14 });
-  assert.deepEqual(failure.frames[3], { symbol: 'static Parser.raise()', file: 'Parser.swift', line: 14, image: 'WordbookTests' });
-  assert.equal(failure.stack.split('\n')[1], '\tat static Parser.raise() (Parser.swift:14)');
+  assert.deepEqual(caught.frames[3], { symbol: 'static Parser.raise()', file: null, line: null, image: 'WordbookTests' });
 });
 
-test('the Swift message and the failure location come from the test run output', () => {
+test('in an app-hosted test, image names hold spaces and the stack starts at the first frame of own code', () => {
+  const report = [
+    'failed: caught "NSInternalInconsistencyException", "Fatal: supplied item identifiers are not unique."',
+    '(',
+    '\t0   CoreFoundation                      0x00000001c0287f24 __exceptionPreprocess + 172',
+    '\t3   CollectionViewCore                  0x000000024baea9a0 -[_UIDiffableDataSourceUpdate initWithIdentifiers:] + 512',
+    '\t7   Shop App.debug.dylib                0x0000000102eee390 $sCartUpdate + 304',
+    '\t8   Shop AppTests                       0x0000000103b0637c $sCartCrashTest + 376',
+    ')',
+  ].join('\n');
+  const names = { $sCartUpdate: 'CartViewController.update(with:animate:)', $sCartCrashTest: 'CartCrashTests.testSameItemTwice()' };
+  const caught = parseCaughtException(report, (symbols) => symbols.map((s) => names[s] ?? s));
+  assert.deepEqual(caught.frames.map((f) => f.image), ['CoreFoundation', 'CollectionViewCore', 'Shop App.debug.dylib', 'Shop AppTests']);
+  const own = new Set(['Shop App', 'Shop App.debug.dylib', 'Shop AppTests']);
+  const failure = caughtFailure({ ...caught, frames: caught.frames.map((f) => ({ ...f, own: own.has(f.image) })) });
+  assert.equal(failure.stack.split('\n').slice(1).join('\n'), '\tat CartViewController.update(with:animate:)\n\tat CartCrashTests.testSameItemTwice()');
+});
+
+test("own images are the build's products: bundles by name, dylibs by file", () => {
+  const products = fs.mkdtempSync(path.join(os.tmpdir(), 'dekaput-products-'));
+  const app = path.join(products, 'Debug-iphonesimulator', 'Shop App.app');
+  fs.mkdirSync(path.join(app, 'PlugIns', 'Shop AppTests.xctest'), { recursive: true });
+  fs.mkdirSync(path.join(app, 'Frameworks', 'ShopKit.framework'), { recursive: true });
+  fs.writeFileSync(path.join(app, 'Shop App.debug.dylib'), '');
+  fs.mkdirSync(path.join(products, 'Debug-iphonesimulator', 'Shop.swiftmodule'));
+  assert.deepEqual([...ownImages(products)].sort(), ['Shop App', 'Shop App.debug.dylib', 'Shop AppTests', 'ShopKit']);
+  assert.deepEqual([...ownImages(path.join(products, 'missing'))], []);
+});
+
+test('the Swift message comes from the test run output', () => {
   const output = [
     "Test Case '-[WordbookTests.WordbookTests testPasses]' started.",
     "Test Case '-[WordbookTests.WordbookTests testCountOfNil]' started.",
@@ -89,8 +115,6 @@ test('the Swift message and the failure location come from the test run output',
   ].join('\n');
   assert.equal(fatalMessage(output, 'testCountOfNil()'), 'Fatal error: Unexpectedly found nil while unwrapping an Optional value');
   assert.equal(fatalMessage('nothing here', 'testCountOfNil()'), '');
-  assert.deepEqual(failureLocation(output, 'testRaise()'), { file: 'Parser.swift', line: 14 });
-  assert.equal(failureLocation(output, 'testOther()'), null);
 });
 
 test('the simulator is an iPhone on the newest iOS', () => {

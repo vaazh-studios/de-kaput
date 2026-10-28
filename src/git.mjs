@@ -28,6 +28,7 @@ export const mergeBase = (root, head = 'HEAD') => git(['merge-base', head, defau
 
 // The branch's diff exactly as verify hashed it into the receipt.
 export const branchDiff = (root, base, head) =>
-  execFileSync('git', ['diff', '--no-renames', '--no-ext-diff', '--no-color', base, head], { cwd: root, maxBuffer: MAX_BUFFER });
+  // core.quotePath=false: accented file names stay readable instead of octal escapes.
+  execFileSync('git', ['-c', 'core.quotePath=false', 'diff', '--no-renames', '--no-ext-diff', '--no-color', base, head], { cwd: root, maxBuffer: MAX_BUFFER });
 
 export const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');

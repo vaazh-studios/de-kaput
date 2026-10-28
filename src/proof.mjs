@@ -4,9 +4,10 @@
 // 'fail' is a test that ran and failed, 'error' is one that never ran (did
 // not compile, no results). stack is the failure text: message first, then
 // frames. ran lists the test classes (Gradle, Xcode) or files (vitest) that ran.
-// The Xcode runner also gives message, frames [{ symbol, file }] and signal
-// (a crash's EXC_BREAKPOINT is also its SIGTRAP), since Swift symbols carry
-// parentheses that the text form cannot split.
+// The Xcode runner also gives message, frames [{ symbol, file, own }] and
+// signal (a crash's EXC_BREAKPOINT is also its SIGTRAP), since Swift symbols
+// carry parentheses that the text form cannot split. own marks the app's and
+// the tests' code; an exception XCTest caught has frames without files.
 //
 // Proven: the new test fails on the branch base with the crash's exception,
 // thrown from app code, reaching the crash's anchor (a frame, or the app class
@@ -40,8 +41,21 @@ const baseName = (file) => file.split('/').pop();
 // "ParserTest.kt" and "com.x.ParserTest" -> "ParserTest"; "x.test.ts" -> "x".
 export const testId = (name) => baseName(name.includes('/') || /\.(kt|[cm]?[jt]s)$/.test(name) ? name : name.split('.').pop()).split('.')[0];
 
+// A ---/+++ path as git writes it: a tab after a path with a space ("Toast CatalogTests/"),
+// quotes around one with a quote, a backslash or a control character.
+function headerPath(raw) {
+  const text = raw.replace(/\t$/, '');
+  if (!/^".*"$/.test(text)) return text;
+  const escaped = { n: '\n', t: '\t', '"': '"', '\\': '\\' };
+  return text.slice(1, -1).replace(/\\(["\\nt])/g, (_, c) => escaped[c]);
+}
+
+// A class or object a test line declares: "+final class CartCrashTests: XCTestCase {", "+class ParserTest {".
+const DECLARED_TYPE = /\b(?:class|struct|extension|object)\s+([A-Za-z_]\w*)/g;
+
 export function diffFacts(diff) {
   const testFiles = new Set();
+  const testTypes = new Set();
   const sourceFiles = new Set();
   const problems = [];
   let oldFile = null;
@@ -51,11 +65,11 @@ export function diffFacts(diff) {
     if (line.startsWith('diff --git')) { oldFile = null; file = null; isNew = false; continue; }
     if (line.startsWith('--- ')) {
       isNew = line === '--- /dev/null';
-      oldFile = isNew ? null : line.replace(/^--- (a\/)?/, '');
+      oldFile = isNew ? null : headerPath(line.slice(4)).replace(/^a\//, '');
       continue;
     }
     if (line.startsWith('+++ ')) {
-      file = line === '+++ /dev/null' ? oldFile : line.replace(/^\+\+\+ (b\/)?/, '');
+      file = line === '+++ /dev/null' ? oldFile : headerPath(line.slice(4)).replace(/^b\//, '');
       if (line === '+++ /dev/null' && file && TEST_PATH.test(file)) problems.push(`deletes the test file ${file}`);
       continue;
     }
@@ -73,11 +87,12 @@ export function diffFacts(diff) {
       continue;
     }
     testFiles.add(file);
+    for (const [, name] of line.matchAll(DECLARED_TYPE)) testTypes.add(name);
     for (const [pattern, what] of FORBIDDEN_IN_TESTS) {
       if (pattern.test(line)) problems.push(`${what} in ${file}`);
     }
   }
-  return { testFiles: [...testFiles], sourceFiles: [...sourceFiles], problems: [...new Set(problems)] };
+  return { testFiles: [...testFiles], testTypes: [...testTypes], sourceFiles: [...sourceFiles], problems: [...new Set(problems)] };
 }
 
 const FRAME_LINE = /^\s*at\s+/;
@@ -113,20 +128,29 @@ const reachesFrame = (symbol, anchor) => {
 const reaches = (anchor, { message, frames }) =>
   anchor.kind === 'message' ? message.includes(anchor.text) : frames.some((f) => reachesFrame(f.symbol, anchor.text));
 
+// The type a frame belongs to: "closure #1 in static CartTests.testA()" and "-[CartTests testA]" -> "CartTests".
+const typeOf = (symbol) => {
+  const objc = /^[-+]\[(\w+)/.exec(symbol);
+  if (objc) return objc[1];
+  return swiftName(symbol).replace(/^(?:(?:implicit )?closure #\d+ in |static |class )+/, '').split(/[.(<\s]/)[0];
+};
+
 const framesOf = (run) => (run.frames ? { message: run.message ?? '', frames: run.frames } : splitStack(run.stack));
 
 // Why a run on base is not the crash, or null when it is.
-function notTheCrash(run, { exception, anchor, testFiles, knownTestFiles }) {
+function notTheCrash(run, { exception, anchor, testFiles, testTypes = [], knownTestFiles }) {
   if (run.status === 'error') return 'fails before for another reason: the test did not compile or did not run';
   if (run.status === 'pass') return 'passes before the fix: the test does not reproduce the crash';
   if (![run.failureType, run.signal].some((t) => t && simpleName(t) === simpleName(exception))) {
     return `fails before with ${run.failureType ?? 'an unknown error'}, not the crash's ${exception}`;
   }
   const stack = framesOf(run);
-  // The first frame with a source file: a Swift trap's first frames are the runtime's.
-  const top = stack.frames.find((f) => f.file && !f.file.startsWith('<'))?.file;
+  // The first frame of own code: one with a source file, or one the runner marks own (a Swift trap's first frames are the runtime's).
+  const top = stack.frames.find((f) => (f.file && !f.file.startsWith('<')) || f.own);
   const testNames = new Set([...testFiles, ...knownTestFiles].map(baseName));
-  if (top && testNames.has(top)) return `the ${exception} is thrown by the test itself (${top}), not by app code`;
+  const testClasses = new Set([...[...testFiles, ...knownTestFiles].map(testId), ...testTypes]);
+  const ownTest = top && (top.file ? testNames.has(top.file) : testClasses.has(typeOf(top.symbol)));
+  if (ownTest) return `the ${exception} is thrown by the test itself (${top.file ?? top.symbol}), not by app code`;
   if (!reaches(anchor, stack)) {
     const where = anchor.kind === 'message' ? 'message' : 'frames';
     return `never reached app code: the failure's ${where} do not include ${anchor.text}`;
@@ -138,10 +162,13 @@ export function decide({ exception, anchor, diff, baseRun, headRun, suiteRun, ta
   const facts = diffFacts(diff);
   if (facts.problems.length) return { ok: false, reason: facts.problems.join('; ') };
   if (facts.testFiles.length === 0) return { ok: false, reason: 'no new or changed test in the branch' };
-  if (baseRun.ran && !facts.testFiles.some((f) => baseRun.ran.map(testId).includes(testId(f)))) {
+  // The filter must run the branch's test: a test file's own class, or a class the branch adds to a test file
+  // (an Xcode project that lists its files in project.pbxproj takes a new test class in an existing file).
+  const branchTests = [...facts.testFiles.map(testId), ...facts.testTypes];
+  if (baseRun.ran && !baseRun.ran.map(testId).some((name) => branchTests.includes(name))) {
     return { ok: false, reason: "the test filter does not run the branch's new test" };
   }
-  const context = { exception, anchor, testFiles: facts.testFiles, knownTestFiles };
+  const context = { exception, anchor, testFiles: facts.testFiles, testTypes: facts.testTypes, knownTestFiles };
 
   const onBase = notTheCrash(baseRun, context);
   if (baseRun.status === 'pass' && tagRun) {

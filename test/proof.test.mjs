@@ -111,6 +111,7 @@ test('loosening an existing test, @Ignore, sleeps and retries are rejected', () 
 test('diffFacts lists new and changed test files and source files', () => {
   assert.deepEqual(diffFacts(fixDiff), {
     testFiles: ['shared/data/src/commonTest/kotlin/com/x/ParserTest.kt'],
+    testTypes: [],
     sourceFiles: ['shared/data/src/commonMain/kotlin/com/x/Parser.kt'],
     problems: [],
   });
@@ -252,4 +253,45 @@ test('XCTSkip, expected failures, Swift sleeps and Xcode project edits are rejec
   const appended = swiftDiff.replace('new file mode 100644\n--- /dev/null', '--- a/Tests/WordbookTests/ParserTests.swift');
   assert.deepEqual(diffFacts(appended).testFiles, ['Tests/WordbookTests/ParserTests.swift']);
   assert.equal(decide({ ...swift, diff: appended, baseRun: trap(appFrame, testFrame), headRun: pass, suiteRun: pass }).ok, true);
+});
+
+test('a test class added to an existing test file counts as the branch\'s test (an Xcode project lists its files)', () => {
+  const added = swiftDiff
+    .replace('new file mode 100644\n--- /dev/null', '--- a/Tests/WordbookTests/ParserTests.swift')
+    .replace('+    func testCountOfNil()', '+final class CartCrashTests: XCTestCase {\n+    func testCountOfNil()');
+  assert.deepEqual(diffFacts(added).testTypes, ['CartCrashTests']);
+  const run = { ...trap(appFrame, { symbol: 'CartCrashTests.testCountOfNil()', file: 'ParserTests.swift' }), ran: ['CartCrashTests'] };
+  assert.equal(decide({ ...swift, diff: added, baseRun: run, headRun: pass, suiteRun: pass }).ok, true);
+  assert.match(decide({ ...swift, diff: added, baseRun: { ...run, ran: ['OtherTests'] } }).reason, /does not run the branch's new test/);
+});
+
+test('paths as git writes them: a tab after a space, quotes around a quote', () => {
+  const spaced = [
+    'diff --git a/iOS/Toast Catalog/Items.swift b/iOS/Toast Catalog/Items.swift',
+    '--- a/iOS/Toast Catalog/Items.swift\t',
+    '+++ b/iOS/Toast Catalog/Items.swift\t',
+    '+        let x = 1',
+    'diff --git "a/iOS/Toast CatalogTests/A\\"Tests.swift" "b/iOS/Toast CatalogTests/A\\"Tests.swift"',
+    '--- "a/iOS/Toast CatalogTests/A\\"Tests.swift"',
+    '+++ "b/iOS/Toast CatalogTests/A\\"Tests.swift"',
+    '+    func testA() {}',
+  ].join('\n');
+  const facts = diffFacts(spaced);
+  assert.deepEqual(facts.sourceFiles, ['iOS/Toast Catalog/Items.swift']);
+  assert.deepEqual(facts.testFiles, ['iOS/Toast CatalogTests/A"Tests.swift']);
+});
+
+test('an exception XCTest caught has no files: own frames decide app code or the test', () => {
+  const caught = (...frames) => ({
+    status: 'fail', failureType: 'NSInternalInconsistencyException', signal: null, message: 'Fatal: supplied item identifiers are not unique.',
+    frames: [{ symbol: '__exceptionPreprocess', file: null, own: false }, { symbol: '-[__UIDiffableDataSourceSnapshot appendItemsWithIdentifiers:]', file: null, own: false }, ...frames],
+    stack: 'NSInternalInconsistencyException: Fatal: supplied item identifiers are not unique.', ran: ['ParserTests'],
+  });
+  const ui = { ...swift, exception: 'NSInternalInconsistencyException', anchor: { kind: 'frame', text: 'ItemsViewController.update(with:animate:)' } };
+  const app = { symbol: 'ItemsViewController.update(with:animate:)', file: null, own: true };
+  const inTest = { symbol: 'ParserTests.testCountOfNil()', file: null, own: true };
+  assert.equal(decide({ ...ui, baseRun: caught(app, inTest), headRun: pass, suiteRun: pass }).ok, true);
+  assert.match(decide({ ...ui, baseRun: caught(inTest) }).reason, /thrown by the test itself \(ParserTests.testCountOfNil\(\)\)/);
+  const helper = { symbol: 'closure #1 in static NetworkClientTests.makeItems()', file: null, own: true };
+  assert.match(decide({ ...ui, baseRun: caught(helper, app, inTest), knownTestFiles: ['Tests/WordbookTests/NetworkClientTests.swift'] }).reason, /thrown by the test itself/);
 });

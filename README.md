@@ -9,21 +9,14 @@ It never fixes blind: no pull request without a test that fails with the crash's
 ## How it works
 
 ```mermaid
-flowchart TD
-    A["Crashlytics<br/>latest release, top 10 fatal crashes"] -->|"agent reads them with the Firebase MCP server"| B["dekaput list<br/>ranks by users, skips crashes already handled"]
-    B -->|"next crash"| C{"Can a test reach it?"}
-    C -->|"no: out of memory, native abort, no symbols"| N["Crashlytics note<br/>says why"]
-    C -->|"yes"| D["Agent writes a test<br/>that reproduces the crash"]
-    D --> E["dekaput verify"]
-    E -->|"fails on main with the crash's exception"| F["Agent fixes the code"]
-    F --> E
-    E -->|"proven: fails before, passes after, suite green"| G["Receipt"]
-    E -->|"passes on main, crashes on the release"| H["Receipt: already fixed on main"]
-    E -->|"rejected"| D
-    G --> P["dekaput open-pr<br/>checks the receipt, opens a normal PR"]
-    H --> P
-    P --> R["Pull request with the test, the fix if any, and the proof"]
-    R --> M["A person reviews and merges"]
+flowchart LR
+    A["Crashlytics<br/>top crashes"] --> B["dekaput list<br/>next crash"]
+    B --> C["Agent writes<br/>a failing test"]
+    C --> D["dekaput verify<br/>fails before,<br/>passes after"]
+    D --> E["dekaput open-pr<br/>receipt checked"]
+    E --> F["Pull request<br/>test, fix, proof"]
+    F --> G["You review<br/>and merge"]
+    B -.->|"can't reproduce"| N["Note on<br/>the issue"]
 ```
 
 1. Your coding agent (Codex or Claude Code) reads the latest release's top crashes from Crashlytics through the Firebase MCP server.

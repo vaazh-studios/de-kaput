@@ -8,6 +8,24 @@ It never fixes blind: no pull request without a test that fails with the crash's
 
 ## How it works
 
+```mermaid
+flowchart TD
+    A["Crashlytics<br/>latest release, top 10 fatal crashes"] -->|"agent reads them with the Firebase MCP server"| B["dekaput list<br/>ranks by users, skips crashes already handled"]
+    B -->|"next crash"| C{"Can a test reach it?"}
+    C -->|"no: out of memory, native abort, no symbols"| N["Crashlytics note<br/>says why"]
+    C -->|"yes"| D["Agent writes a test<br/>that reproduces the crash"]
+    D --> E["dekaput verify"]
+    E -->|"fails on main with the crash's exception"| F["Agent fixes the code"]
+    F --> E
+    E -->|"proven: fails before, passes after, suite green"| G["Receipt"]
+    E -->|"passes on main, crashes on the release"| H["Receipt: already fixed on main"]
+    E -->|"rejected"| D
+    G --> P["dekaput open-pr<br/>checks the receipt, opens a normal PR"]
+    H --> P
+    P --> R["Pull request with the test, the fix if any, and the proof"]
+    R --> M["A person reviews and merges"]
+```
+
 1. Your coding agent (Codex or Claude Code) reads the latest release's top crashes from Crashlytics through the Firebase MCP server.
 2. `dekaput list` ranks them and picks the next one without a pull request.
 3. The agent writes a test that reproduces that one crash, then fixes it.

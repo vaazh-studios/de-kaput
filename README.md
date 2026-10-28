@@ -9,25 +9,8 @@ It never fixes blind: no pull request without a test that fails with the crash's
 ## How it works
 
 ```mermaid
-sequenceDiagram
-    participant C as Crashlytics
-    participant A as Your agent
-    participant K as de-kaput
-    participant G as GitHub
-    actor Y as You
-    A->>C: Top crashes of the latest release
-    A->>K: dekaput list
-    K-->>A: The next crash and where it happens
-    loop Until the test crashes the same way
-        A->>A: Write a test, then the fix
-    end
-    A->>K: dekaput verify
-    K-->>A: Receipt: fails before, passes after
-    A->>K: dekaput open-pr
-    K->>G: Pull request with the test, the fix and the proof
-    A->>C: Note on the issue with the PR link
-    G-->>Y: Ready for your review
-    Y->>G: Merge
+flowchart LR
+    A([Crash]) --> B([Test that crashes]) --> C([Fix]) --> D([Proof]) --> E([Pull request])
 ```
 
 1. Your coding agent (Codex or Claude Code) reads the latest release's top crashes from Crashlytics through the Firebase MCP server.

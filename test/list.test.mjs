@@ -57,3 +57,26 @@ test('with the release mapping, a renamed class in the message makes the crash w
   assert.equal(next.anchor.text, 'com.example.app.ui.tabs.HomeTab');
   assert.deepEqual(next.decoded, { sm8: 'com.example.app.ui.tabs.HomeTab' });
 });
+
+test('the queue holds every crash to work on, one per run step, in order', () => {
+  const two = [
+    fixture('android-currenttab.json', { id: 'e044', impactedUsersCount: 3, eventsCount: 3 }),
+    { ...fixture('android-currenttab.json', { impactedUsersCount: 2, eventsCount: 2 }), issueId: 'other1', subtitle: 'java.lang.IllegalStateException - com.example.app.data.Repo failed', exceptions: 'java.lang.IllegalStateException: boom\nat com.example.app.data.Repo.load (Repo.kt:3)' },
+    fixture('android-oom-kitatlas.json', { id: 'a2bf', impactedUsersCount: 1, eventsCount: 1 }),
+  ];
+  const { queue, next } = listCrashes(two, { options, sourceSetOf: inMain });
+  assert.deepEqual(queue.map((c) => [c.issueId.slice(0, 6), c.stop]), [['e04405', 'attempt'], ['other1', 'attempt'], ['a2bfa6', 'note']]);
+  assert.equal(next.issueId, queue[0].issueId);
+});
+
+test('like Dependabot, attempts wait once the open PR limit is reached; notes do not', () => {
+  const two = [
+    fixture('android-currenttab.json', { id: 'e044', impactedUsersCount: 3, eventsCount: 3 }),
+    { ...fixture('android-currenttab.json', { impactedUsersCount: 2, eventsCount: 2 }), issueId: 'other1', subtitle: 'java.lang.IllegalStateException - com.example.app.data.Repo failed', exceptions: 'java.lang.IllegalStateException: boom\nat com.example.app.data.Repo.load (Repo.kt:3)' },
+    fixture('android-oom-kitatlas.json', { id: 'a2bf', impactedUsersCount: 1, eventsCount: 1 }),
+  ];
+  const prs = [{ title: 'x', body: 'an unrelated crash', state: 'OPEN' }];
+  const { queue, waiting } = listCrashes(two, { options, sourceSetOf: inMain, prs, maxPrs: 2 });
+  assert.deepEqual(queue.map((c) => c.issueId.slice(0, 6)), ['e04405', 'a2bfa6']);
+  assert.deepEqual(waiting.map((c) => c.issueId), ['other1']);
+});

@@ -32,7 +32,7 @@ function shapeOf(subtitle, appPackages) {
   return s.replace(/\b[a-z]{1,3}\d+\b/g, '<class>').trim();
 }
 
-export function listCrashes(events, { prs = [], options = {}, sourceSetOf = () => null, tags = [], mapping = null } = {}) {
+export function listCrashes(events, { prs = [], options = {}, sourceSetOf = () => null, tags = [], mapping = null, maxPrs = 5 } = {}) {
   const fatal = events
     .filter((e) => e.errorType === 'FATAL')
     .map((e) => (mapping ? (({ event, decoded }) => ({ ...event, decoded }))(deobfuscateEvent(e, mapping)) : e));
@@ -65,18 +65,31 @@ export function listCrashes(events, { prs = [], options = {}, sourceSetOf = () =
     if (twin) Object.assign(crash, { stop: 'same-as', sameAs: twin.issueId, reason: `the same crash as ${twin.issueId}; one fix covers both` });
   }
   // A twin ranks its group: when the top crash is the renamed copy, its readable twin is next.
+  // A twin ranks its group: when the top crash is the renamed copy, its readable twin takes its place.
   const resolve = (c) => (c.stop === 'same-as' ? crashes.find((t) => t.issueId === c.sameAs) : c);
-  const next = crashes.map(resolve).find((c) => c && !c.handled && c.stop !== 'skip' && c.stop !== 'same-as') ?? null;
-  return { crashes, next: next && { ...next, twins: crashes.filter((c) => c.sameAs === next.issueId).map((c) => c.issueId) }, otherCount: events.length - fatal.length };
+  const workable = crashes.map(resolve).filter((c) => c && !c.handled && c.stop !== 'skip' && c.stop !== 'same-as');
+  // Like Dependabot's open-pull-requests-limit: attempts beyond the free PR slots wait for the next run.
+  let slots = Math.max(0, maxPrs - prs.filter((p) => (p.state ?? 'OPEN') === 'OPEN').length);
+  const queue = [...new Set(workable)].map((c) => {
+    const twins = crashes.filter((t) => t.sameAs === c.issueId).map((t) => t.issueId);
+    if (c.stop !== 'attempt') return { ...c, twins };
+    if (slots === 0) return { ...c, twins, waiting: `the PR limit (${maxPrs} open) is reached; next run` };
+    slots -= 1;
+    return { ...c, twins };
+  });
+  const ready = queue.filter((c) => !c.waiting);
+  return { crashes, queue: ready, waiting: queue.filter((c) => c.waiting), next: ready[0] ?? null, otherCount: events.length - fatal.length };
 }
 
-export function formatList({ crashes, next, otherCount }) {
+export function formatList({ crashes, queue, waiting, otherCount }) {
+  const order = new Map(queue.map((c, i) => [c.issueId, i + 1]));
   const lines = crashes.map((c, i) => {
-    const mark = c === next || c.issueId === next?.issueId ? '>' : ' ';
-    const status = c.handled ? `handled: ${c.handled}` : `${c.stop}: ${c.reason}`;
+    const mark = order.has(c.issueId) ? `q${order.get(c.issueId)}` : '  ';
+    const wait = waiting.find((w) => w.issueId === c.issueId);
+    const status = c.handled ? `handled: ${c.handled}` : wait ? `waiting: ${wait.waiting}` : `${c.stop}: ${c.reason}`;
     return `${mark} ${String(i + 1).padStart(2)}. ${c.issueId.slice(0, 8)} ${c.platform.toLowerCase()} users=${c.users ?? '?'} ${c.subtitle ?? c.title}\n       ${status}`;
   });
   if (otherCount) lines.push(`   (${otherCount} non-fatal issues not listed)`);
-  lines.push(next ? `\nnext: ${next.issueId} (${next.stop})` : '\nnext: nothing left to work on');
+  lines.push(queue.length ? `\nqueue: ${queue.map((c) => `${c.issueId.slice(0, 8)} (${c.stop})`).join(', ')}` : '\nqueue: nothing left to work on');
   return lines.join('\n');
 }

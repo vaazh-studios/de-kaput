@@ -13,7 +13,7 @@ import { OPEN_PR_OPTIONS, openPr } from '../src/open-pr.mjs';
 import { verify, VERIFY_OPTIONS } from '../src/verify.mjs';
 
 const USAGE = `usage:
-  dekaput list --app-package <pkg> [--ignore-frame <pkg>] [--probe <regex>] [--mapping <mapping.txt>] [--json] <event files>
+  dekaput list --app-package <pkg> [--ignore-frame <pkg>] [--probe <regex>] [--mapping <mapping.txt>] [--max-prs <n>] [--json] <event files>
   dekaput verify --issue <id> --gradle-task <:module:task> --test <filter> --exception <class>
                  --anchor <frame or class> [--anchor-kind frame|message] [--release <ref>]
   dekaput open-pr --title <title> --body-file <file> [--also <issue id>]`;
@@ -29,6 +29,8 @@ function list(args) {
       prs: { type: 'string' },
       // The release build's R8 mapping.txt, to read renamed class names in crash messages.
       mapping: { type: 'string' },
+      // Most de-kaput PRs open at once, like Dependabot's open-pull-requests-limit.
+      'max-prs': { type: 'string', default: '5' },
       json: { type: 'boolean', default: false },
     },
   });
@@ -42,6 +44,7 @@ function list(args) {
   const result = listCrashes(events, {
     prs,
     tags: git(['tag'], root).split('\n').filter(Boolean),
+    maxPrs: Number(values['max-prs']),
     mapping: values.mapping ? parseMapping(fs.readFileSync(values.mapping, 'utf8')) : null,
     sourceSetOf: sourceSetFinder(git(['ls-files', '*.kt', '*.java'], root).split('\n')),
     options: {

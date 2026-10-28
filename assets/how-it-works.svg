@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="760" height="300" viewBox="0 0 760 300" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="345" viewBox="0 0 800 345" role="img" aria-labelledby="title desc">
   <title id="title">How de-kaput works</title>
-  <desc id="desc">Top crashes go to dekaput list, which picks the next crash, or leaves a note when no test can reach it. It finds the commit the crash was built from, and the agent works in a new git worktree on a fresh branch from main. There it writes a test that crashes the same way. dekaput verify checks it: when the test fails on main, the agent fixes the code and verifies again; a rejected test goes back to be rewritten. A proven result, or one already fixed on main, goes to dekaput open-pr, which opens a pull request.</desc>
+  <desc id="desc">The latest release's top crashes go to dekaput list, which skips crashes that already have a pull request and builds a queue. For each crash in the queue, one at a time: find the commit the crash was built from, check out a new git worktree on a fresh branch from main, and write a test that crashes the same way. dekaput verify proves it; when the test fails on main the agent fixes the code and verifies again. dekaput open-pr opens one pull request per crash, proven or already fixed on main. A crash no test can reproduce gets a note on the issue instead. A person reviews and merges each pull request.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#8c959f"/>
@@ -11,67 +11,68 @@
     .box { font-size: 15px; fill: #24292f; text-anchor: middle; dominant-baseline: middle; }
     .cmd { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; fill: #24292f; text-anchor: middle; dominant-baseline: middle; }
     .label { font-size: 12px; fill: #768390; text-anchor: middle; }
-    .start { text-anchor: start; }
+    .frame-title { font-size: 13px; font-weight: 600; fill: #8250df; }
     .line { stroke: #8c959f; stroke-width: 1.6; fill: none; }
     .dashed { stroke-dasharray: 5 4; }
   </style>
 
-  <!-- row 1: pick the crash and set up -->
-  <rect x="8" y="70" width="110" height="44" rx="22" fill="#ffebe9" stroke="#cf222e" stroke-width="1.6"/>
-  <text class="box" x="63" y="92">Top crashes</text>
+  <!-- top: pick and queue -->
+  <rect x="10" y="20" width="120" height="40" rx="20" fill="#ffebe9" stroke="#cf222e" stroke-width="1.6"/>
+  <text class="box" x="70" y="40">Top crashes</text>
 
-  <rect x="146" y="70" width="140" height="44" rx="8" fill="#ffffff" stroke="#8250df" stroke-width="1.6"/>
-  <text class="cmd" x="216" y="92">dekaput list</text>
+  <rect x="160" y="20" width="140" height="40" rx="8" fill="#ffffff" stroke="#8250df" stroke-width="1.6"/>
+  <text class="cmd" x="230" y="40">dekaput list</text>
+  <text class="label" x="230" y="78">skips crashes that already have a PR</text>
 
-  <rect x="314" y="70" width="160" height="44" rx="8" fill="#ffffff" stroke="#8250df" stroke-width="1.6"/>
-  <text class="box" x="394" y="92">Crash's commit</text>
-  <text class="label" x="394" y="130">build revision or release tag</text>
+  <rect x="330" y="14" width="150" height="40" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.4"/>
+  <rect x="336" y="20" width="150" height="40" rx="8" fill="#ffffff" stroke="#a78bfa" stroke-width="1.4"/>
+  <rect x="342" y="26" width="150" height="40" rx="8" fill="#ffffff" stroke="#8250df" stroke-width="1.6"/>
+  <text class="box" x="417" y="46">Queue of crashes</text>
 
-  <rect x="502" y="70" width="170" height="44" rx="8" fill="#ffffff" stroke="#8250df" stroke-width="1.6"/>
-  <text class="box" x="587" y="92">New git worktree</text>
-  <text class="label" x="587" y="130">fresh branch from main</text>
+  <line class="line" x1="130" y1="40" x2="158" y2="40" marker-end="url(#arrow)"/>
+  <line class="line" x1="300" y1="40" x2="328" y2="40" marker-end="url(#arrow)"/>
 
-  <line class="line" x1="118" y1="92" x2="144" y2="92" marker-end="url(#arrow)"/>
-  <line class="line" x1="286" y1="92" x2="312" y2="92" marker-end="url(#arrow)"/>
-  <line class="line" x1="474" y1="92" x2="500" y2="92" marker-end="url(#arrow)"/>
+  <!-- for each crash -->
+  <rect x="10" y="110" width="590" height="220" rx="14" fill="#faf8ff" stroke="#d8c8fb" stroke-width="1.6"/>
+  <text class="frame-title" x="26" y="132">For each crash in the queue, one at a time</text>
+  <path class="line" d="M 417 66 V 96 H 99 V 148" marker-end="url(#arrow)"/>
 
-  <!-- no test can reach it: a note -->
-  <rect x="166" y="6" width="100" height="34" rx="17" fill="#f6f8fa" stroke="#8c959f" stroke-width="1.6" stroke-dasharray="5 4"/>
-  <text class="box" x="216" y="23">Note</text>
-  <line class="line dashed" x1="216" y1="70" x2="216" y2="42" marker-end="url(#arrow)"/>
-  <text class="label start" x="222" y="60">can't test</text>
+  <rect x="24" y="150" width="150" height="40" rx="8" fill="#ffffff" stroke="#8250df" stroke-width="1.6"/>
+  <text class="box" x="99" y="170">Crash's commit</text>
+  <text class="label" x="99" y="208">build revision or tag</text>
 
-  <!-- down to row 2 -->
-  <path class="line" d="M 672 92 H 702 V 148 H 83 V 168" marker-end="url(#arrow)"/>
+  <rect x="204" y="150" width="170" height="40" rx="8" fill="#ffffff" stroke="#8250df" stroke-width="1.6"/>
+  <text class="box" x="289" y="170">New git worktree</text>
+  <text class="label" x="289" y="208">fresh branch from main</text>
 
-  <!-- row 2: reproduce, prove, ship -->
-  <rect x="8" y="170" width="150" height="44" rx="8" fill="#ffffff" stroke="#8250df" stroke-width="1.6"/>
-  <text class="box" x="83" y="192">Test that crashes</text>
+  <rect x="404" y="150" width="170" height="40" rx="8" fill="#ffffff" stroke="#8250df" stroke-width="1.6"/>
+  <text class="box" x="489" y="170">Test that crashes</text>
 
-  <rect x="186" y="170" width="150" height="44" rx="8" fill="#f3edff" stroke="#8250df" stroke-width="2.4"/>
-  <text class="cmd" x="261" y="192">dekaput verify</text>
+  <line class="line" x1="174" y1="170" x2="202" y2="170" marker-end="url(#arrow)"/>
+  <line class="line" x1="374" y1="170" x2="402" y2="170" marker-end="url(#arrow)"/>
+  <path class="line" d="M 489 190 V 228 H 99 V 248" marker-end="url(#arrow)"/>
 
-  <rect x="456" y="170" width="150" height="44" rx="8" fill="#ffffff" stroke="#8250df" stroke-width="1.6"/>
-  <text class="cmd" x="531" y="192">dekaput open-pr</text>
+  <rect x="24" y="250" width="150" height="40" rx="8" fill="#f3edff" stroke="#8250df" stroke-width="2.4"/>
+  <text class="cmd" x="99" y="270">dekaput verify</text>
+  <text class="label" x="99" y="322">fails on main: fix, verify again</text>
 
-  <rect x="634" y="170" width="118" height="44" rx="22" fill="#dafbe1" stroke="#1a7f37" stroke-width="1.6"/>
-  <text class="box" x="693" y="192">Pull request</text>
+  <rect x="300" y="250" width="160" height="40" rx="8" fill="#ffffff" stroke="#8250df" stroke-width="1.6"/>
+  <text class="cmd" x="380" y="270">dekaput open-pr</text>
 
-  <line class="line" x1="158" y1="192" x2="184" y2="192" marker-end="url(#arrow)"/>
-  <line class="line" x1="336" y1="192" x2="454" y2="192" marker-end="url(#arrow)"/>
-  <text class="label" x="396" y="182">proven</text>
-  <text class="label" x="396" y="208">or already</text>
-  <text class="label" x="396" y="222">fixed on main</text>
-  <line class="line" x1="606" y1="192" x2="632" y2="192" marker-end="url(#arrow)"/>
+  <line class="line" x1="174" y1="270" x2="298" y2="270" marker-end="url(#arrow)"/>
+  <text class="label" x="237" y="262">proven</text>
+  <text class="label" x="252" y="306">or already fixed on main</text>
 
-  <!-- rejected: back to the test -->
-  <path class="line dashed" d="M 200 214 C 196 250, 124 250, 120 216" marker-end="url(#arrow)"/>
-  <text class="label" x="160" y="264">rejected</text>
+  <!-- results: one PR per crash, or a note -->
+  <rect x="642" y="110" width="150" height="40" rx="20" fill="#f6f8fa" stroke="#8c959f" stroke-width="1.6" stroke-dasharray="5 4"/>
+  <text class="box" x="717" y="130">Note on the issue</text>
+  <path class="line dashed" d="M 574 170 H 614 V 130 H 640" marker-end="url(#arrow)"/>
+  <text class="label" x="620" y="182" style="text-anchor: start">can't reproduce</text>
 
-  <!-- fails on main: fix, then verify again -->
-  <line class="line" x1="286" y1="214" x2="286" y2="248" marker-end="url(#arrow)"/>
-  <line class="line" x1="316" y1="250" x2="316" y2="216" marker-end="url(#arrow)"/>
-  <text class="label start" x="322" y="247">fails on main</text>
-  <rect x="246" y="250" width="100" height="40" rx="8" fill="#fff8c5" stroke="#9a6700" stroke-width="1.6"/>
-  <text class="box" x="296" y="270">Fix</text>
+  <rect x="630" y="238" width="150" height="40" rx="20" fill="#dafbe1" stroke="#8fd19e" stroke-width="1.4"/>
+  <rect x="636" y="244" width="150" height="40" rx="20" fill="#dafbe1" stroke="#4ac26b" stroke-width="1.4"/>
+  <rect x="642" y="250" width="150" height="40" rx="20" fill="#dafbe1" stroke="#1a7f37" stroke-width="1.6"/>
+  <text class="box" x="717" y="270">One PR per crash</text>
+  <line class="line" x1="460" y1="270" x2="640" y2="270" marker-end="url(#arrow)"/>
+  <text class="label" x="717" y="310">you review and merge each one</text>
 </svg>

@@ -88,7 +88,32 @@ function decide(event, sourceSetOf, { appPackages = [], ignoreFrames = [], probe
     const sourceSet = sourceSetOf(`${simple}.kt`, named) ?? sourceSetOf(`${simple}.java`, named);
     return anchored('message', named, sourceSet, type);
   }
+  // A class named only by its R8 name ("Key sm8:currentTab was used ..."): without the
+  // exact build's mapping, anchor on the message's own words around it. The agent finds
+  // the code that writes that message; the proof still needs the same message, thrown
+  // from outside the test.
+  const literal = stableText(message);
+  if (literal) {
+    return {
+      stop: 'attempt',
+      reason: `${type}: the message names a class only by its R8 name; anchored on its text "${literal}" (find the code that writes it, or pass the release mapping)`,
+      exception: type,
+      anchor: { kind: 'message', text: literal, sourceSet: null },
+    };
+  }
   return { stop: 'skip', reason: 'every frame is in system or library code and the message names no app class' };
+}
+
+// An R8 name written as a class is in a message: short letters with a digit, right before ':', '.' or '$'.
+const R8_NAME = /\b[a-z]{1,3}\d+[a-z]?(?=[:.$])/g;
+
+// The longest run of the message between R8 names, when the message has any; at least three words.
+export function stableText(message) {
+  if (!R8_NAME.test(message ?? '')) return null;
+  R8_NAME.lastIndex = 0;
+  const pieces = message.split(R8_NAME).map((p) => p.replace(/^[\s:.$]+|\s+$/g, ''));
+  const longest = pieces.sort((a, b) => b.length - a.length)[0] ?? '';
+  return longest.split(/\s+/).length >= 3 ? longest : null;
 }
 
 export const isInternalDevice = (device) => INTERNAL_DEVICE.test(device ?? '');

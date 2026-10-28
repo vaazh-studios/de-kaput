@@ -17,7 +17,7 @@ With the Firebase MCP server, for the app id you were given:
 
 ## 2. Pick the crash
 
-On Android with R8, Crashlytics reads the frames back to real names but not the exception message, so a message can name the app's class only by its R8 name (`Key sm8:currentTab ...`). Pass the release build's mapping with `--mapping <mapping.txt>`: the one from that exact build (your CI's archived artifact, or `./gradlew :app:minifyReleaseWithR8` on the release commit). Another build's mapping gives the same short names to different classes.
+On Android with R8, Crashlytics reads the frames back to real names but not the exception message, so a message can name the app's class only by its R8 name (`Key sm8:currentTab ...`). Pass the release build's mapping with `--mapping <mapping.txt>`: the one archived from that exact build. Do not rebuild it: running R8 again on the release commit can give different names (on the first live run, the rebuilt mapping named an unrelated class), and another build's mapping gives the same short names to different classes. Without the mapping, `list` anchors on the message's own text instead; find the code that writes that message (search the repo for its words).
 
 
 ```bash

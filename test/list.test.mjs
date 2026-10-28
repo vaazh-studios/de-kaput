@@ -49,7 +49,9 @@ test('the release comes from the build revision when the event has one', () => {
 test('with the release mapping, a renamed class in the message makes the crash workable', () => {
   const mapping = new Map([['sm8', 'com.example.app.ui.tabs.HomeTab']]);
   const only = [fixture('android-currenttab-obfuscated.json', { id: 'f26e', impactedUsersCount: 2, eventsCount: 5 })];
-  assert.equal(listCrashes(only, { options, sourceSetOf: inMain }).next, null);
+  const without = listCrashes(only, { options, sourceSetOf: inMain }).next;
+  assert.equal(without.stop, 'attempt');
+  assert.deepEqual(without.anchor, { kind: 'message', text: 'currentTab was used multiple times', sourceSet: null });
   const { next } = listCrashes(only, { options, sourceSetOf: inMain, mapping });
   assert.equal(next.stop, 'attempt');
   assert.equal(next.anchor.text, 'com.example.app.ui.tabs.HomeTab');

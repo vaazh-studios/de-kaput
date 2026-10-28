@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { classifyIssue, parseFrames, sourceSetFinder } from '../src/classify.mjs';
+import { classifyIssue, parseFrames, sourceSetFinder, stableText } from '../src/classify.mjs';
 
 const fixture = (name) => JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8'));
 // Stands in for the repo lookup: every file the fixtures name lives in commonMain.
@@ -122,4 +122,10 @@ test('a native Android main source set and a java folder are attempted', () => {
   const result = classifyIssue(event, find, opts);
   assert.equal(result.stop, 'attempt');
   assert.equal(result.anchor.sourceSet, 'main');
+});
+
+test('the stable text around an R8 name is the anchor when there is no mapping', () => {
+  assert.equal(stableText('Key sm8:currentTab was used multiple times '), 'currentTab was used multiple times');
+  assert.equal(stableText('no renamed class in here at all'), null);
+  assert.equal(stableText('ab1: x'), null);
 });

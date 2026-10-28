@@ -56,10 +56,12 @@ export function listCrashes(events, { prs = [], options = {}, sourceSetOf = () =
       evidence: evidenceMarkdown(issue, [event]),
     };
   });
+  // A crash anchored only on message text rides with a twin anchored on a real class.
+  const classAnchored = (c) => c.stop === 'attempt' && c.anchor?.sourceSet != null;
   for (const crash of crashes) {
-    if (crash.stop === 'attempt') continue;
+    if (classAnchored(crash)) continue;
     const shape = shapeOf(crash.subtitle, options.appPackages ?? []);
-    const twin = crashes.find((c) => c !== crash && c.stop === 'attempt' && c.platform === crash.platform && shapeOf(c.subtitle, options.appPackages ?? []) === shape);
+    const twin = crashes.find((c) => c !== crash && classAnchored(c) && c.platform === crash.platform && shapeOf(c.subtitle, options.appPackages ?? []) === shape);
     if (twin) Object.assign(crash, { stop: 'same-as', sameAs: twin.issueId, reason: `the same crash as ${twin.issueId}; one fix covers both` });
   }
   // A twin ranks its group: when the top crash is the renamed copy, its readable twin is next.

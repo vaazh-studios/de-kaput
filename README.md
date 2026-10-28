@@ -9,28 +9,16 @@ It never fixes blind: no pull request without a test that fails with the crash's
 ## How it works
 
 ```mermaid
-flowchart TB
-    subgraph pick ["1. Pick"]
-        A([Latest release<br/>top crashes]) --> B[dekaput list]
-    end
-    subgraph repro ["2. Reproduce"]
-        C[Write a test that<br/>crashes the same way]
-    end
-    subgraph prove ["3. Prove"]
-        D{{dekaput verify}}
-        E[Fix the code]
-    end
-    subgraph ship ["4. Ship"]
-        F[dekaput open-pr] --> G([Pull request<br/>you review and merge])
-    end
-    B -->|next crash| C
+flowchart LR
+    A([Top crashes]) --> B[dekaput list]
     B -.->|no test can reach it| N([Note on the issue])
-    C --> D
-    D -->|crashes on main| E
+    B -->|next crash| C[Write a test that<br/>crashes the same way]
+    C --> D{{dekaput verify}}
+    D -->|crashes on main| E[Fix the code]
     E --> D
-    D -->|proven| F
-    D -->|already fixed on main| F
     D -.->|rejected| C
+    D -->|proven, or<br/>already fixed on main| F[dekaput open-pr]
+    F --> G([Pull request<br/>you review and merge])
 ```
 
 1. Your coding agent (Codex or Claude Code) reads the latest release's top crashes from Crashlytics through the Firebase MCP server.

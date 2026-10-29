@@ -105,7 +105,7 @@ For alerts, create an incoming webhook for the channel (Discord: Server Settings
 
 Then ask the agent to "fix the latest release's crashes with de-kaput". It reads the release's top crashes through the MCP server, runs `dekaput list`, and works through the queue one crash and one pull request at a time, as the runbook says.
 
-**Runs nobody watches.** Any scheduler that starts your agent with a prompt can run de-kaput on its own: a scheduled task in the Claude desktop app, or cron with `claude -p` or `codex exec`. Set `releases` in the config, since nobody is there to pick one, and add `notify` to hear about notes and pull requests. Tell the agent in its prompt that nobody will answer, so where the runbook says to ask, it goes on as the runbook says for the case without an answer. The agent's own plan or API key pays for the run; de-kaput itself costs nothing.
+**Runs nobody watches.** Any scheduler that starts your agent with a prompt can run de-kaput on its own: a scheduled task in the Claude desktop app, or cron with `claude -p` or `codex exec`. Set `releases` in the config, since nobody is there to pick one, and add `notify` to hear about notes and pull requests. Tell the agent in its prompt that nobody will answer, so where the runbook says to ask, it goes on as the runbook says for the case without an answer. The agent's own plan or API key pays for the run; de-kaput itself costs nothing. For GitHub Actions, [docs/ci.md](https://github.com/vaazh-studios/de-kaput/blob/main/docs/ci.md) has a scheduled workflow for Claude Code and one for Codex.
 
 ## License
 

@@ -59,12 +59,30 @@ apps:
 
 With it, the commands need no app-specific flags: `list` takes each crash's app by platform, and `verify` finds the Gradle task or Xcode scheme from the module that holds the new test. On iOS your app's own code is its Swift and Objective-C files in the repo, so `packages` only matters for Kotlin Multiplatform code; `xcode-destination` picks a simulator (otherwise an iPhone on the newest iOS installed), or `platform=macOS` for a package whose tests run on the Mac. Flags still win over the file. A mistake in the file is named, not guessed (`unknown key "open-pr-limit"`).
 
-## Use it with your agent
+## Setup
 
-- **Claude Code:** copy `skills/de-kaput/` into your project's `.claude/skills/`, then ask "fix the next crash with de-kaput".
-- **Codex:** add one line to your project's `AGENTS.md`: "To fix a Crashlytics crash, follow RUNBOOK.md from vaazh-studios/de-kaput: one crash at a time, one pull request per crash."
+Once per app repo, on the machine the agent runs on:
+
+1. **Give the agent Crashlytics** through the Firebase MCP server, loaded with only the tools the runbook uses: top issues, sample events, notes, and the reports guide. Nothing that can deploy, create or change a project.
+   - Claude Code: `claude mcp add firebase -- npx -y firebase-tools@latest mcp --tools crashlytics_get_report,crashlytics_batch_get_events,crashlytics_list_notes,crashlytics_create_note,firebase_read_resources` (add `-s project` to share it with your team in `.mcp.json`).
+   - Codex, in `~/.codex/config.toml`:
+
+     ```toml
+     [mcp_servers.firebase]
+     command = "npx"
+     args = ["-y", "firebase-tools@latest", "mcp", "--tools", "crashlytics_get_report,crashlytics_batch_get_events,crashlytics_list_notes,crashlytics_create_note,firebase_read_resources"]
+     ```
+2. **Sign in to Firebase** with `npx firebase-tools login`, as an account that can see the app's Crashlytics. Writing the `de-kaput:` notes needs write access to Crashlytics.
+3. **Sign in to GitHub** with `gh auth login`, as an account that can push branches to the repo. `open-pr` pushes the fix branch and opens the pull request; it never pushes to the default branch.
+4. **Commit `.github/de-kaput.yml`** to the default branch (see Configuration).
+5. **Tell the agent about de-kaput:**
+   - Claude Code: copy `skills/de-kaput/` into your project's `.claude/skills/`.
+   - Codex: add one line to your project's `AGENTS.md`: "To fix a Crashlytics crash, follow RUNBOOK.md from vaazh-studios/de-kaput: one crash at a time, one pull request per crash."
+6. **Make sure the app's tests run** on that machine: Gradle with its `local.properties`, or Xcode with an iPhone simulator.
 
 Until the npm package is published, run the CLI from a clone: `node <clone>/bin/dekaput.mjs` in place of `npx @vaazh-studios/de-kaput`.
+
+Then ask the agent to "fix the latest release's crashes with de-kaput". It reads the release's top crashes through the MCP server, runs `dekaput list`, and works through the queue one crash and one pull request at a time, as the runbook says.
 
 ## License
 

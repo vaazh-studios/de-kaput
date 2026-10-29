@@ -74,7 +74,7 @@ With it, the commands need no app-specific flags: `list` takes each crash's app 
 
 On the machine the agent runs on: steps 1 to 4 once per machine, 5 to 7 once per app repo.
 
-1. **Install the CLI** with `npm install -g github:vaazh-studios/de-kaput` (Node 20 or newer). It puts `dekaput` on the PATH and installs the runbook with it, so the two always match. Once the package is on npm, `npm install -g de-kaput` does the same.
+1. **Install the CLI** with `npm install -g de-kaput` (Node 20 or newer). It puts `dekaput` on the PATH and installs the runbook with it, so the two always match. For the latest `main` instead of the published release, `npm install -g github:vaazh-studios/de-kaput`.
 2. **Give the agent Crashlytics** through the Firebase MCP server, loaded with only the tools the runbook uses: top issues, sample events, notes, and the reports guide. Nothing that can deploy, create or change a project.
    - Claude Code: `claude mcp add firebase -- npx -y firebase-tools@latest mcp --tools crashlytics_get_report,crashlytics_batch_get_events,crashlytics_list_notes,crashlytics_create_note,firebase_read_resources` (add `-s project` to share it with your team in `.mcp.json`).
    - Codex, in `~/.codex/config.toml`:

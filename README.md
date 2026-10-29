@@ -22,7 +22,7 @@ It never fixes blind: no pull request without a test that fails with the crash's
    A crash no test can reach gets a note on the Crashlytics issue instead, and the run moves on.
 4. You get **one pull request per crash**, each reviewed and merged on its own. `--max-prs` caps how many are open at once.
 
-Built for native Android, native iOS and Kotlin Multiplatform apps: Gradle runs the JVM tests, and `xcodebuild` runs XCTest and Swift Testing on an iPhone simulator (Xcode 16 or newer). On iOS a crash's identity is its Mach exception or signal (`EXC_BREAKPOINT`, `EXC_BAD_ACCESS`, `SIGABRT`) or its NSException name, read from the crash log the simulator writes.
+Built for native Android, native iOS and Kotlin Multiplatform apps: Gradle runs the JVM tests, and `xcodebuild` runs XCTest and Swift Testing on an iPhone simulator (Xcode 16 or newer). On iOS a crash's identity is its Mach exception or signal (`EXC_BREAKPOINT`, `EXC_BAD_ACCESS`, `SIGABRT`) or its NSException name, read from the crash log the simulator writes. A crash in Kotlin/Native code (an `iosMain` or other native source set) gets a note instead: JVM tests cannot reach it, and there is no Kotlin/Native runner yet.
 
 ## Configuration
 
@@ -58,6 +58,14 @@ apps:
 ```
 
 With it, the commands need no app-specific flags: `list` takes each crash's app by platform, and `verify` finds the Gradle task or Xcode scheme from the module that holds the new test. On iOS your app's own code is its Swift and Objective-C files in the repo, so `packages` only matters for Kotlin Multiplatform code; `xcode-destination` picks a simulator (otherwise an iPhone on the newest iOS installed), or `platform=macOS` for a package whose tests run on the Mac. Flags still win over the file. A mistake in the file is named, not guessed (`unknown key "open-pr-limit"`).
+
+Only `version`, each app's `platform` and `crashlytics-app-id`, and an Android app's `packages` are required. The rest:
+
+- `crashlytics-app-id` is the Firebase app id: `mobilesdk_app_id` in `google-services.json`, `GOOGLE_APP_ID` in `GoogleService-Info.plist`, or the App ID in the Firebase console's project settings. Only the agent uses it, to read Crashlytics.
+- `name` defaults to the platform, `open-pull-requests-limit` to 5, and `reviewers` to nobody.
+- `probes` are regular expressions, matched without regard to case against the crash's exception line and message.
+- `release-tags` default to `{platform}/v{version}-{build}`, then `v{version}-{build}`. `{version}` and `{build}` come from Crashlytics' name for the build, such as `1.4 (77)`, and `{platform}` is `android` or `ios`; the first pattern that names an existing tag wins.
+- The file can also be `de-kaput.yml` at the repo root.
 
 ## Setup
 

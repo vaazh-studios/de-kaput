@@ -33,6 +33,8 @@ Work through `queue` in order, **one crash at a time**. Each entry's `stop` says
 - `attempt`: go to step 3. Keep the entry's `issueId` (the full id), `exception`, `anchor.text`, `anchor.kind` and `release` for step 4, and its `twins` (other issue ids of the same crash, such as an R8-renamed copy) for step 5.
 - `note`: add a Crashlytics note that starts with `de-kaput:` and gives the reason, then go to the next crash.
 
+A crash stays out of the queue once it is handled: a pull request labelled `de-kaput` names its full issue id (open or closed: a person answered it), or the issue has a note starting with `de-kaput:`. Only a person puts one back, by removing the `de-kaput` label from its closed pull request and deleting its `de-kaput:` notes.
+
 ## 3. Reproduce it with a test (each crash in its own worktree)
 
 ```bash
@@ -43,6 +45,8 @@ git worktree add --no-track -b de-kaput/<first 8 of the issue id>-<slug> <a fold
 Work only in that worktree. Read the repo's own agent instructions (`AGENTS.md`, `CLAUDE.md`) first.
 
 Write the test against the code as it is on the default branch. It calls the code the way the app reaches it and lets the failure escape. Do not use `assertFailsWith`, do not throw the exception yourself, do not use reflection, and do not edit existing tests. Name the test after what the user saw, not the issue id; put the issue id in its doc comment. Commit it.
+
+`verify` rejects a branch that changes build, test-runner or CI files (Gradle files and `libs.versions.toml`, `package.json`, Xcode project, scheme and test plan files, `Package.swift`, `Podfile`, anything under `.github/` or `.claude/`), and a test that is switched off, sleeps, retries, skips, runs only on a condition (`assume`) or expects its own failure. A fix that needs one of those, such as a dependency upgrade, cannot be proven: add a `de-kaput:` note saying what it needs, and go to the next crash.
 
 On iOS, write an XCTest or a Swift Testing `@Test` in the app's unit test target (its `*Tests/` folder) and let the crash happen: the Swift trap or exception crashes the test, and its crash log is the evidence. In an Xcode project that lists its files in `project.pbxproj`, add the test class to the end of an existing test file in that target, because `verify` rejects edits to project files. A Swift package or an Xcode 16 synchronized folder can take a new file; name it after its test class. Do not use `XCTExpectFailure`, `withKnownIssue` or `XCTSkip`.
 

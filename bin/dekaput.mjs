@@ -71,8 +71,12 @@ function list(args) {
 }
 
 const [command, ...args] = process.argv.slice(2);
+const asksForHelp = (arg) => arg === '--help' || arg === '-h';
 try {
-  if (command === 'list') list(args);
+  // Help is never an error: bare, "help", or --help after any command.
+  if (!command || command === 'help' || asksForHelp(command) || args.some(asksForHelp)) console.log(USAGE);
+  else if (command === '--version' || command === '-v') console.log(JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);
+  else if (command === 'list') list(args);
   else if (command === 'verify') {
     const result = verify(parseArgs({ args, options: VERIFY_OPTIONS }).values);
     console.log(JSON.stringify(result.ok ? result.receipt : { ok: false, reproduced: result.reproduced, reason: result.reason, runs: result.runs }, null, 2));
@@ -83,7 +87,7 @@ try {
   else if (command === 'runbook') process.stdout.write(fs.readFileSync(new URL('../RUNBOOK.md', import.meta.url), 'utf8'));
   else {
     console.log(USAGE);
-    process.exitCode = command && command !== 'help' ? 2 : 0;
+    process.exitCode = 2;
   }
 } catch (error) {
   console.error(`dekaput: ${error.message.split('\n')[0]}`);

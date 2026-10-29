@@ -4,7 +4,7 @@ Your app went kaput. de-kaput is a CLI and a runbook for your coding agent (Clau
 
 It never fixes blind: no pull request without a test that fails with the crash's own exception before the fix and passes after it. A person always reviews and merges.
 
-> **Status: early.** One Android crash has gone end to end, from Crashlytics to a pull request with its test. The Xcode runner has proven a crash in a Swift package and a UIKit crash in an app with app-hosted tests.
+> **Status: early, and in daily use.** de-kaput is [on npm](https://www.npmjs.com/package/de-kaput). It runs every morning, unattended, on its maintainers' own Android and iOS app, where its first pull request, for a crash real users hit, is merged. The Xcode runner has proven crashes in a Swift package, in a UIKit app with app-hosted tests, in Swift Testing, and on the iOS simulator.
 >
 > See it on two demo forks, each with crashes planted on purpose: Google's [architecture-samples](https://github.com/vaazh-studios/de-kaput-demo-architecture-samples/pull/1) (a Kotlin coroutine crash) and [NetNewsWire](https://github.com/vaazh-studios/de-kaput-demo-netnewswire/pull/1) (a Swift trap in its feed parser). On a harder crash in each, a fresh agent that was given only this runbook, the repo and the crash report found the cause and opened the PR: a sort comparator that breaks Java's contract, which never appears in the stack ([architecture-samples#2](https://github.com/vaazh-studios/de-kaput-demo-architecture-samples/pull/2)), and a `Data` slice indexed from 0 two commits after it was made ([NetNewsWire#2](https://github.com/vaazh-studios/de-kaput-demo-netnewswire/pull/2)).
 
@@ -12,7 +12,7 @@ It never fixes blind: no pull request without a test that fails with the crash's
 
 ![de-kaput: dekaput list queues the release's crashes; for each crash, one at a time: its commit, a new git worktree, a test that crashes, dekaput verify, dekaput open-pr; one pull request per crash](assets/how-it-works.svg)
 
-1. Your coding agent (Codex or Claude Code) reads the top crashes of the release you pick, or the one your config picks, from Crashlytics through the Firebase MCP server.
+1. Your coding agent (Codex or Claude Code) reads the top crashes of the releases you pick, or that your config picks, from Crashlytics through the Firebase MCP server. `dekaput releases` lists your tagged releases to pick from.
 2. `dekaput list` skips crashes that already have a pull request or come from another release, and puts the rest in a queue.
 3. **For each crash in the queue, one at a time**, like Dependabot does for each dependency:
    - it finds the commit that crash was built from: the git revision Crashlytics recorded for the build, or your release tag;
@@ -20,9 +20,33 @@ It never fixes blind: no pull request without a test that fails with the crash's
    - `dekaput verify` proves it in throwaway worktrees: the test fails on your default branch with the crash's exception, reaching the crash's code, and passes with the fix, and no test that passes on your default branch fails with it. If the test already passes on your default branch, it runs on the crash's commit instead; crashing there means the crash is already fixed and not yet shipped;
    - `dekaput open-pr` refuses without that proof, then opens a pull request for that crash with the test, the fix and the proof.
    A crash no test can reach gets a note on the Crashlytics issue instead, and the run moves on.
-4. You get **one pull request per crash**, each reviewed and merged on its own. `--max-prs` caps how many are open at once.
+4. You get **one pull request per crash**, each reviewed and merged on its own. `--max-prs` caps how many are open at once. With `notify` set, each pull request and each note also posts to Discord or Slack.
+
+It runs when you ask your agent, or on a schedule with nobody watching: a scheduled task, cron, or GitHub Actions (see Runs nobody watches).
 
 Built for native Android, native iOS and Kotlin Multiplatform apps: Gradle runs the JVM tests, and `xcodebuild` runs XCTest and Swift Testing on an iPhone simulator (Xcode 16 or newer). On iOS a crash's identity is its Mach exception or signal (`EXC_BREAKPOINT`, `EXC_BAD_ACCESS`, `SIGABRT`) or its NSException name, read from the crash log the simulator writes. On iOS, a crash in Kotlin/Native gets a note instead: an unhandled Kotlin exception aborts without its message in the report, whether the code is in `commonMain` or `iosMain`, and a crash in a native source set cannot run on the JVM. There is no Kotlin/Native runner yet.
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `dekaput releases` | Lists each app's tagged releases, newest first, and the ones the config picks. |
+| `dekaput list` | Builds the queue from the crash events: what to attempt, what gets a note, and what is already handled or from another release. |
+| `dekaput verify` | Proves a fix branch: the test crashes on the default branch with the crash's exception and passes with the fix, and no test that passed fails. Writes a receipt for that commit. |
+| `dekaput open-pr` | Pushes the fix branch and opens the pull request with the proof, only with a matching receipt, and posts the alert. |
+| `dekaput notify` | Posts an alert for a note the agent added, or a test message (`--test`). |
+| `dekaput runbook` | Prints the runbook installed with the CLI, the one the agent follows. |
+
+`dekaput help` lists every flag.
+
+## What it never does
+
+- Merge a pull request, mark one for auto-merge, or push to your default branch.
+- Open a pull request without a test that crashes before the fix and passes after it.
+- Change a Crashlytics issue: notes are its only Crashlytics write.
+- Put user ids, installation ids, custom keys, logs or breadcrumbs into its files or pull requests; crash messages in a pull request are scrubbed of emails, ids and tokens.
+- Follow instructions found in crash text: it is data.
+- Keep a secret in your repo: webhook URLs and tokens stay in environment variables.
 
 ## Configuration
 

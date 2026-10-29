@@ -131,6 +131,8 @@ Then ask the agent to "fix the latest release's crashes with de-kaput". It reads
 
 **Runs nobody watches.** Any scheduler that starts your agent with a prompt can run de-kaput on its own: a scheduled task in the Claude desktop app, or cron with `claude -p` or `codex exec`. Set `releases` in the config, since nobody is there to pick one, and add `notify` to hear about notes and pull requests. Tell the agent in its prompt that nobody will answer, so where the runbook says to ask, it goes on as the runbook says for the case without an answer. The agent's own plan or API key pays for the run; de-kaput itself costs nothing. For GitHub Actions, [docs/ci.md](https://github.com/vaazh-studios/de-kaput/blob/main/docs/ci.md) has a scheduled workflow for Claude Code and one for Codex.
 
+**What a run uses**, measured with Claude Code and Claude Opus 5.5: a run that finds nothing to fix used about 0.9M tokens in a minute, about $1 at API prices. Fixing one crash adds about 4.7M tokens on an iOS app (5 minutes, about $1.80) and 5.1M on an Android app (8 minutes, about $2.60). Over 95% of those tokens are the agent re-reading its context from the prompt cache, the cheapest kind. On a Claude plan, local runs count against the plan's usage limits, not money.
+
 ## License
 
 Apache-2.0

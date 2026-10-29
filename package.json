@@ -1,5 +1,5 @@
 {
-  "name": "@vaazh-studios/de-kaput",
+  "name": "de-kaput",
   "version": "0.0.1",
   "description": "Reproduce the crash with a test, fix it, open a pull request with proof. For native Android, native iOS and KMP apps.",
   "license": "Apache-2.0",

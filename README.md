@@ -74,7 +74,7 @@ With it, the commands need no app-specific flags: `list` takes each crash's app 
 
 On the machine the agent runs on: steps 1 to 4 once per machine, 5 to 7 once per app repo.
 
-1. **Install the CLI** with `npm install -g github:vaazh-studios/de-kaput` (Node 20 or newer). It puts `dekaput` on the PATH and installs the runbook with it, so the two always match. Once the package is on npm, `npm install -g @vaazh-studios/de-kaput` does the same.
+1. **Install the CLI** with `npm install -g github:vaazh-studios/de-kaput` (Node 20 or newer). It puts `dekaput` on the PATH and installs the runbook with it, so the two always match. Once the package is on npm, `npm install -g de-kaput` does the same.
 2. **Give the agent Crashlytics** through the Firebase MCP server, loaded with only the tools the runbook uses: top issues, sample events, notes, and the reports guide. Nothing that can deploy, create or change a project.
    - Claude Code: `claude mcp add firebase -- npx -y firebase-tools@latest mcp --tools crashlytics_get_report,crashlytics_batch_get_events,crashlytics_list_notes,crashlytics_create_note,firebase_read_resources` (add `-s project` to share it with your team in `.mcp.json`).
    - Codex, in `~/.codex/config.toml`:
@@ -91,7 +91,7 @@ On the machine the agent runs on: steps 1 to 4 once per machine, 5 to 7 once per
 5. **Commit `.github/de-kaput.yml`** to the default branch (see Configuration). The repo must be on GitHub with its remote named `origin`: `list` looks for de-kaput pull requests there, and `open-pr` opens them there.
 6. **Tag your store releases** as `android/v1.4-75` and `ios/v1.4-77` (the default `release-tags`), or set `release-tags` to your own pattern. Tags are how de-kaput finds the commit a release was built from: Crashlytics reports a git revision for Android builds that record one, and none for iOS. Without tags there is no `latest`, no list of releases to pick from, and on iOS no check for a crash that is already fixed on main.
 7. **Tell the agent about de-kaput.** Both have it read the runbook with `dekaput runbook`, which prints the one installed with the CLI:
-   - Claude Code: from the project's root, `mkdir -p .claude/skills && cp -R "$(npm root -g)/@vaazh-studios/de-kaput/skills/de-kaput" .claude/skills/`. Commit it so the whole team's agents have it, or copy it to `~/.claude/skills/` instead to use it only yourself.
+   - Claude Code: from the project's root, `mkdir -p .claude/skills && cp -R "$(npm root -g)/de-kaput/skills/de-kaput" .claude/skills/`. Commit it so the whole team's agents have it, or copy it to `~/.claude/skills/` instead to use it only yourself.
    - Codex: add one line to your project's `AGENTS.md`: "To fix a Crashlytics crash, run `dekaput runbook` and follow what it prints: one crash at a time, one pull request per crash."
 
 The app's tests must also run on that machine: Gradle with its `local.properties`, or Xcode with an iPhone simulator.

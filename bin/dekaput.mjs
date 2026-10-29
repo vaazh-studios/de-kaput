@@ -61,9 +61,14 @@ function list(args) {
     : JSON.parse(execFileSync('gh', ['pr', 'list', '--repo', originRepo(root), '--label', PR_LABEL, '--state', 'all', '--limit', '200', '--json', 'title,body,state,url'], { cwd: root, encoding: 'utf8' }));
   const tags = git(['tag'], root).split('\n').filter(Boolean);
   const appOf = (platform) => (config ? appFor(config, platform, values.app) : null);
+  // Per platform: the --release values that name one of its releases win; otherwise the
+  // config's pick. Another platform's tag says nothing about this one.
   const releasesOf = (platform) => {
-    const wanted = values.release.length ? values.release : appOf(platform)?.releases;
-    return wanted ? selectReleases(platform, wanted, tags, appOf(platform)?.releaseTags) : null;
+    const patterns = appOf(platform)?.releaseTags;
+    const picked = selectReleases(platform, values.release, tags, patterns);
+    if (picked.size) return picked;
+    const fromConfig = appOf(platform)?.releases;
+    return fromConfig ? selectReleases(platform, fromConfig, tags, patterns) : null;
   };
   const result = listCrashes(events, {
     prs,

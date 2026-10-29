@@ -31,7 +31,7 @@ On Android with R8, Crashlytics reads the frames back to real names but not the 
 dekaput list --json [--release '<name>']... .dekaput/events/*.json
 ```
 
-Pass `--release` once for each release you were told or the person picked; releases the config picks need no flag. `list` sets aside crashes from any other version. It reads the app's packages, crash-reporter frames, probes, release tags and PR limit from `.github/de-kaput.yml`. Without that file, pass `--app-package <package>`, `--ignore-frame <package>` and `--probe <regex>`. `--max-prs <n>` (default 5) caps how many de-kaput pull requests can be open at once, like Dependabot's `open-pull-requests-limit`; crashes past it wait for the next run. Without `--json` it prints a short list for people, with issue ids cut to 8 characters and without the values step 4 needs.
+Pass `--release` once for each release you were told or the person picked, by its `tag` when there is one (a tag names one app's release; a Crashlytics name applies to every app). An app with no `--release` of its own keeps the config's pick. `list` sets aside crashes from any other version. It reads the app's packages, crash-reporter frames, probes, release tags and PR limit from `.github/de-kaput.yml`. Without that file, pass `--app-package <package>`, `--ignore-frame <package>` and `--probe <regex>`. `--max-prs <n>` (default 5) caps how many de-kaput pull requests can be open at once, like Dependabot's `open-pull-requests-limit`; crashes past it wait for the next run. Without `--json` it prints a short list for people, with issue ids cut to 8 characters and without the values step 4 needs.
 
 Work through `queue` in order, **one crash at a time**. Each entry's `stop` says what to do:
 

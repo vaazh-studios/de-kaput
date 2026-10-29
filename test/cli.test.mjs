@@ -58,5 +58,7 @@ test('list keeps only the picked releases; --release wins over the config', () =
   assert.deepEqual(skipped(listed()), ['1.4 (77)']);
   assert.deepEqual(skipped(listed('--release', '1.4 (77)')), ['1.4 (75)']);
   assert.deepEqual(skipped(listed('--release', 'android/v1.4-75', '--release', '1.4 (77)')), []);
+  // An iOS pick leaves the Android crashes to the config's Android pick.
+  assert.deepEqual(skipped(listed('--release', 'ios/v1.4-77')), ['1.4 (77)']);
   assert.match(runIn(dir, 'list', '--prs', 'prs.json', '--release', 'android/v9.9-99', ...events).stderr, /neither a release tag/);
 });

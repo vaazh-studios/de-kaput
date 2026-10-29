@@ -40,7 +40,7 @@ export function listCrashes(events, { prs = [], options = {}, optionsFor = null,
   // A crash from a version the run was not asked for is set aside, so a wrong fetch never becomes a PR.
   const outsideReleases = (event) => {
     const wanted = releasesOf(event.platform.toLowerCase());
-    return wanted && !wanted.has(event.version) ? { stop: 'skip', reason: `from ${event.version ?? 'an unknown version'}, not a release this run works on (${[...wanted].join(', ')})` } : null;
+    return wanted?.size && !wanted.has(event.version) ? { stop: 'skip', reason: `from ${event.version ?? 'an unknown version'}, not a release this run works on (${[...wanted].join(', ')})` } : null;
   };
   const fatal = events
     .filter((e) => e.errorType === 'FATAL')

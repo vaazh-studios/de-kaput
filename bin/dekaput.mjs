@@ -4,6 +4,7 @@
 
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { nativeFileFinder, sourceSetFinder } from '../src/classify.mjs';
 import { appFor, listOptions, loadConfig } from '../src/config.mjs';
@@ -14,13 +15,14 @@ import { noteMessage, prMessage, sendAlerts, TEST_MESSAGE } from '../src/notify.
 import { OPEN_PR_OPTIONS, openPr } from '../src/open-pr.mjs';
 import { dekaputDir } from '../src/receipt.mjs';
 import { verify, VERIFY_OPTIONS } from '../src/verify.mjs';
-import { releasesFor, selectReleases } from '../src/versions.mjs';
+import { latestOf, matchTag, newestFirst, selectReleases } from '../src/versions.mjs';
 
 const USAGE = `usage:
-  dekaput releases [--app <name>] [--json]
-               (each app's tagged releases, newest first, and the ones the config's "releases" picks)
-  dekaput list [--app <name>] [--release <release>]... [--mapping <mapping.txt>] [--max-prs <n>] [--prs <prs.json>] [--json] <event files>
-               (a release is latest, a tag such as ios/v1.4-77, or a Crashlytics name such as "1.4 (77)")
+  dekaput releases [--app <name>] [--versions <versions.json>] [--json]
+               (each app's versions with crashes, newest first, their tags, the latest, and what the config's "releases" picks;
+                the versions come from .dekaput/versions.json, which the agent writes from Crashlytics' topVersions)
+  dekaput list [--app <name>] [--release <release>]... [--versions <versions.json>] [--mapping <mapping.txt>] [--max-prs <n>] [--prs <prs.json>] [--json] <event files>
+               (a release is latest, all, a tag, a Crashlytics name such as "1.4 (77)", or a version such as "1.4")
                (without .github/de-kaput.yml: --app-package <pkg> [--ignore-frame <pkg>] [--probe <regex>])
   dekaput verify --issue <id> --test <filter> --exception <class or signal> [--gradle-task <:module:task>]
                  --anchor <frame or class> [--anchor-kind frame|message] [--release <ref>]
@@ -47,6 +49,7 @@ function list(args) {
       app: { type: 'string' },
       // The releases this run works on; wins over the config's "releases".
       release: { type: 'string', multiple: true, default: [] },
+      versions: { type: 'string' },
       json: { type: 'boolean', default: false },
     },
   });
@@ -63,20 +66,37 @@ function list(args) {
     ? JSON.parse(fs.readFileSync(values.prs, 'utf8'))
     : JSON.parse(execFileSync('gh', ['pr', 'list', '--repo', originRepo(root), '--label', PR_LABEL, '--state', 'all', '--limit', '200', '--json', 'title,body,state,url'], { cwd: root, encoding: 'utf8' }));
   const tags = git(['tag'], root).split('\n').filter(Boolean);
+  const commitOf = commitFinder(root);
   const appOf = (platform) => (config ? appFor(config, platform, values.app) : null);
-  // Per platform: the --release values that name one of its releases win; otherwise the
-  // config's pick. Another platform's tag says nothing about this one.
+  const fromFile = readVersions(root, values.versions);
+  // Per platform: its versions with crashes (the file's and the events'), and its tags by name.
+  const releaseContext = (platform) => {
+    const app = appOf(platform) ?? { name: platform, platform, releaseTags: null };
+    const fromEvents = events.filter((e) => e.platform?.toLowerCase() === platform).map((e) => e.version).filter(Boolean);
+    const versions = [...new Set([...versionsIn(fromFile, app), ...fromEvents])];
+    return { versions, tags, tagOf: tagFinder(app, tags, commitOf) };
+  };
+  // The --release values that name one of the platform's releases win; otherwise the
+  // config's pick. Another platform's tag says nothing about this one; "all" filters nothing.
   const releasesOf = (platform) => {
-    const patterns = appOf(platform)?.releaseTags;
-    const picked = selectReleases(platform, values.release, tags, patterns);
-    if (picked.size) return picked;
+    const context = releaseContext(platform);
+    if (values.release.length) {
+      const picked = selectReleases(values.release, context);
+      if (picked === null || picked.size) return picked;
+    }
     const fromConfig = appOf(platform)?.releases;
-    return fromConfig ? selectReleases(platform, fromConfig, tags, patterns) : null;
+    return fromConfig ? selectReleases(fromConfig, context) : null;
+  };
+  const newestOf = (platform) => {
+    const context = releaseContext(platform);
+    return latestOf(context.versions, context.tagOf);
   };
   const result = listCrashes(events, {
     prs,
     tags,
+    commitOf,
     releasesOf,
+    newestOf,
     maxPrs: Number(values['max-prs'] ?? config?.openPullRequestsLimit ?? 5),
     optionsFor: fromFlags ? null : (event) => { const app = appFor(config, event.platform, values.app); return app && listOptions(app); },
     mapping: values.mapping ? parseMapping(fs.readFileSync(values.mapping, 'utf8')) : null,
@@ -104,37 +124,53 @@ async function notify(args) {
   for (const r of results) console.log(`${r.type}: ${r.sent ? 'sent' : 'not sent'}`);
 }
 
+// The versions with crashes the agent wrote from Crashlytics' topVersions, by app name:
+// { "android": ["1.4 (75)", ...] }. null when there is no file.
+function readVersions(root, file) {
+  const full = path.resolve(root, file ?? '.dekaput/versions.json');
+  if (!fs.existsSync(full)) {
+    if (file) throw new Error(`no such file: ${file}`);
+    return null;
+  }
+  return JSON.parse(fs.readFileSync(full, 'utf8'));
+}
+const versionsIn = (fromFile, app) => fromFile?.[app.name] ?? fromFile?.[app.platform] ?? [];
+
+// A tag's commit, to settle tags that fit a build equally.
+const commitFinder = (root) => (tag) => git(['rev-parse', `${tag}^{commit}`], root).trim();
+const tagFinder = (app, tags, commitOf) => (name) => matchTag(app.platform, name, tags, { patterns: app.releaseTags ?? null, commitOf }).tag;
+
 // What the agent asks the person when the config does not pick a release, and the
 // Crashlytics names it reads the crashes of.
 function releases(args) {
-  const { values } = parseArgs({ args, options: { app: { type: 'string' }, json: { type: 'boolean', default: false } } });
+  const { values } = parseArgs({ args, options: { app: { type: 'string' }, versions: { type: 'string' }, json: { type: 'boolean', default: false } } });
   const root = repoRoot();
   const config = loadConfig(root);
   const tags = git(['tag'], root).split('\n').filter(Boolean);
+  const commitOf = commitFinder(root);
+  const fromFile = readVersions(root, values.versions);
   const apps = config
     ? (values.app ? [appFor(config, '', values.app)] : config.apps)
-    : ['android', 'ios'].map((platform) => ({ name: platform, platform, releaseTags: undefined, releases: null }));
-  // One app's unknown release is that app's problem: the others are still listed.
-  const picked = (app) => {
+    : ['android', 'ios'].map((platform) => ({ name: platform, platform, releaseTags: null, releases: null }));
+  const result = apps.map((app) => {
+    const tagOf = tagFinder(app, tags, commitOf);
+    const versions = [...new Set(versionsIn(fromFile, app))].sort(newestFirst);
+    const entry = { name: app.name, platform: app.platform, latest: latestOf(versions, tagOf), versions: versions.map((name) => ({ name, tag: tagOf(name) ?? null })) };
+    // One app's unknown release is that app's problem: the others are still listed.
     try {
-      return { selected: app.releases ? [...selectReleases(app.platform, app.releases, tags, app.releaseTags)] : null };
+      const picked = app.releases ? selectReleases(app.releases, { versions, tags, tagOf }) : undefined;
+      return { ...entry, selected: picked === undefined ? null : picked === null ? versions : [...picked] };
     } catch (error) {
-      return { selected: null, error: error.message };
+      return { ...entry, selected: null, error: error.message };
     }
-  };
-  const result = apps.map((app) => ({
-    name: app.name,
-    platform: app.platform,
-    releases: releasesFor(app.platform, tags, app.releaseTags).map(({ name, tag }) => ({ name, tag })),
-    ...picked(app),
-  }));
+  });
   if (values.json) return console.log(JSON.stringify(result, null, 2));
   for (const app of result) {
     const picks = app.error ?? (app.selected ? `the config picks ${app.selected.join(', ')}` : 'the config picks none; ask which release');
     console.log(`${app.name}: ${picks}`);
-    for (const r of app.releases.slice(0, 10)) console.log(`  ${r.name.padEnd(12)} ${r.tag}`);
-    if (app.releases.length > 10) console.log(`  (${app.releases.length - 10} older)`);
-    if (!app.releases.length) console.log('  no release tags match; see release-tags in docs/configuration.md');
+    for (const v of app.versions.slice(0, 10)) console.log(`  ${v.name.padEnd(14)} ${(v.tag ?? '(no tag)').padEnd(24)}${v.name === app.latest ? ' latest' : ''}`);
+    if (app.versions.length > 10) console.log(`  (${app.versions.length - 10} older)`);
+    if (!app.versions.length) console.log('  no versions with crashes; write .dekaput/versions.json from topVersions (runbook step 1)');
   }
 }
 

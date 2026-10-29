@@ -43,11 +43,11 @@ test('a full config reads back with its values', () => {
   assert.deepEqual(config.apps[0].releaseTags, ['release/{version}-{build}']);
 });
 
-test('defaults: a PR limit of 5, the standard release tags, no reviewers', () => {
+test('defaults: a PR limit of 5, tags found by name, no reviewers', () => {
   const config = parseConfig('version: 1\napps:\n  - platform: ios\n    crashlytics-app-id: "1:1:ios:x"\n    packages: [com.example.app]\n');
   assert.equal(config.openPullRequestsLimit, 5);
   assert.deepEqual(config.reviewers, []);
-  assert.deepEqual(config.apps[0].releaseTags, ['{platform}/v{version}-{build}', 'v{version}-{build}']);
+  assert.equal(config.apps[0].releaseTags, null);
   assert.deepEqual(config.apps[0].probes, []);
 });
 

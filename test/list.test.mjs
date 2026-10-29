@@ -92,6 +92,30 @@ test("with a config, each crash takes its platform's app, and a platform with no
   assert.equal(crashes.find((c) => c.platform === 'ANDROID').release, '1.4+77');
 });
 
+test('crashes still in the newest version come first, fresh or regressed ones first among them, then users', () => {
+  const crash = (id, issue) => ({ ...fixture('android-currenttab.json', { id, ...issue }), issueId: id });
+  const ranked = [
+    crash('old-big', { impactedUsersCount: 50, lastSeenVersion: '1.3' }),
+    crash('new-small', { impactedUsersCount: 1, lastSeenVersion: '1.4' }),
+    crash('new-fresh', { impactedUsersCount: 1, lastSeenVersion: '1.4', signals: ['SIGNAL_FRESH'] }),
+    crash('old-regressed', { impactedUsersCount: 2, lastSeenVersion: '1.3', signals: [{ signal: 'SIGNAL_REGRESSED', description: 'back' }] }),
+    crash('new-big', { impactedUsersCount: 9, lastSeenVersion: '1.4', signals: ['SIGNAL_REPETITIVE'] }),
+  ];
+  const { crashes } = listCrashes(ranked, { options, sourceSetOf: inMain, newestOf: () => '1.4 (77)' });
+  assert.deepEqual(crashes.map((c) => c.issueId), ['new-fresh', 'new-big', 'new-small', 'old-regressed', 'old-big']);
+  assert.deepEqual(crashes[0].signals, ['SIGNAL_FRESH']);
+  assert.deepEqual(crashes[3].signals, ['SIGNAL_REGRESSED']);
+});
+
+test('a release tag is found by name; tied tags are named, not guessed', () => {
+  const android = fixture('android-currenttab.json', { id: 'e044', impactedUsersCount: 1 });
+  assert.equal(listCrashes([android], { options, sourceSetOf: inMain, tags: ['android/v1.4-77', 'ios/v1.4-77'] }).crashes[0].release, 'android/v1.4-77');
+  const tied = listCrashes([android], { options, sourceSetOf: inMain, tags: ['v1.4-77', 'r1.4-77'] }).crashes[0];
+  assert.equal(tied.release, null);
+  assert.deepEqual(tied.tiedTags, ['r1.4-77', 'v1.4-77']);
+  assert.equal(listCrashes([android], { options, sourceSetOf: inMain, tags: ['v1.4-77', 'r1.4-77'], commitOf: () => 'abc' }).crashes[0].release, 'r1.4-77');
+});
+
 test('with releases picked, crashes from other versions are set aside', () => {
   const releasesOf = (platform) => (platform === 'android' ? new Set(['1.4 (75)']) : null);
   const { crashes, queue } = listCrashes(events, { options, sourceSetOf: inMain, releasesOf });

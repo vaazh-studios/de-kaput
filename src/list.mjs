@@ -12,7 +12,7 @@
 import { classifyIssue } from './classify.mjs';
 import { deobfuscateEvent } from './mapping.mjs';
 import { evidenceMarkdown } from './evidence.mjs';
-import { inReleases, tagFor } from './versions.mjs';
+import { inReleases, matchTag, splitVersion } from './versions.mjs';
 
 export const NOTE_PREFIX = 'de-kaput:';
 export const PR_LABEL = 'de-kaput';
@@ -32,10 +32,15 @@ function shapeOf(subtitle, appPackages) {
   return s.replace(/\b[a-z]{1,3}\d+\b/g, '<class>').trim();
 }
 
+// The issue's Crashlytics signals by name; the event file may keep Crashlytics' { signal } objects.
+const signalsOf = (event) => (event.issue?.signals ?? []).map((s) => (typeof s === 'string' ? s : s?.signal)).filter(Boolean);
+
 // options: { appPackages, ignoreFrames, probes, releaseTags } for every crash, or
 // optionsFor(event) to pick them per crash (the config's app for its platform; null when none).
 // releasesOf(platform): the Crashlytics version names this run works on, or null for any.
-export function listCrashes(events, { prs = [], options = {}, optionsFor = null, sourceSetOf = () => null, nativeFileOf = () => null, tags = [], mapping = null, maxPrs = 5, releasesOf = () => null } = {}) {
+// newestOf(platform): the newest release ("1.4 (75)"), or null when unknown; crashes still
+// seen in its version come first. commitOf(tag): a tag's commit, to settle tied tags.
+export function listCrashes(events, { prs = [], options = {}, optionsFor = null, sourceSetOf = () => null, nativeFileOf = () => null, tags = [], mapping = null, maxPrs = 5, releasesOf = () => null, newestOf = () => null, commitOf = null } = {}) {
   const optsOf = (event) => (optionsFor ? optionsFor(event) : options);
   // A crash from a version the run was not asked for is set aside, so a wrong fetch never becomes a PR.
   const outsideReleases = (event) => {
@@ -45,11 +50,21 @@ export function listCrashes(events, { prs = [], options = {}, optionsFor = null,
   const fatal = events
     .filter((e) => e.errorType === 'FATAL')
     .map((e) => (mapping ? (({ event, decoded }) => ({ ...event, decoded }))(deobfuscateEvent(e, mapping)) : e));
+  // Crashes still seen in the newest version first (an older one is probably fixed on main
+  // already); among those, what Crashlytics calls fresh or regressed; then users, then events.
+  const stillSeen = (e) => {
+    const newest = newestOf(e.platform.toLowerCase());
+    return !newest || splitVersion(newest).version === (e.issue?.lastSeenVersion ?? splitVersion(e.version ?? '').version);
+  };
+  const fresh = (e) => signalsOf(e).some((s) => s === 'SIGNAL_FRESH' || s === 'SIGNAL_REGRESSED');
+  const tier = (e) => (stillSeen(e) ? 0 : 2) + (fresh(e) ? 0 : 1);
   const ranked = [...fatal].sort(
-    (a, b) => (b.issue?.impactedUsersCount ?? 0) - (a.issue?.impactedUsersCount ?? 0) || (b.issue?.eventsCount ?? 0) - (a.issue?.eventsCount ?? 0),
+    (a, b) => tier(a) - tier(b) || (b.issue?.impactedUsersCount ?? 0) - (a.issue?.impactedUsersCount ?? 0) || (b.issue?.eventsCount ?? 0) - (a.issue?.eventsCount ?? 0),
   );
   const crashes = ranked.map((event) => {
     const issue = { id: event.issueId, title: event.title, subtitle: event.subtitle, ...event.issue };
+    // Android events carry the build's git revision (buildStamp); it beats a tag found by name.
+    const tagged = event.revision ? null : matchTag(event.platform.toLowerCase(), event.version, tags, { patterns: optsOf(event)?.releaseTags ?? null, commitOf });
     return {
       issueId: event.issueId,
       platform: event.platform,
@@ -58,12 +73,13 @@ export function listCrashes(events, { prs = [], options = {}, optionsFor = null,
       version: event.version ?? null,
       users: issue.impactedUsersCount ?? null,
       events: issue.eventsCount ?? null,
+      signals: signalsOf(event),
       handled: handledBy(event.issueId, prs, event.notes ?? []),
       appPackages: optsOf(event)?.appPackages ?? [],
       ...(event.decoded && Object.keys(event.decoded).length ? { decoded: event.decoded } : {}),
       ...(outsideReleases(event) ?? (optsOf(event) ? classifyIssue(event, sourceSetOf, { ...optsOf(event), nativeFileOf }) : { stop: 'skip', reason: `no app for ${event.platform.toLowerCase()} in the config` })),
-      // Android events carry the build's git revision (buildStamp); it beats a tag lookup.
-      release: event.revision ?? tagFor(event.platform.toLowerCase(), event.version, tags, optsOf(event)?.releaseTags),
+      release: event.revision ?? tagged?.tag ?? null,
+      ...(tagged?.ambiguous.length ? { tiedTags: tagged.ambiguous } : {}),
       evidence: evidenceMarkdown(issue, [event]),
     };
   });

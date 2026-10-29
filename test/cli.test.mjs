@@ -41,17 +41,20 @@ function repoWithReleases() {
   for (const tag of ['android/v1.3-71', 'android/v1.4-75', 'ios/v1.4-77']) git('tag', tag);
   const fixture = (name) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
   fs.writeFileSync(path.join(dir, 'prs.json'), '[]');
+  fs.mkdirSync(path.join(dir, '.dekaput'));
+  fs.writeFileSync(path.join(dir, '.dekaput/versions.json'), JSON.stringify({ android: ['1.4 (77)', '1.3 (71)', '1.4 (75)'] }));
   return { dir, events: [fixture('android-currenttab-obfuscated.json'), fixture('android-oom-kitatlas.json')] };
 }
 
-test('releases lists the tagged releases newest first and what the config picks', () => {
+test("releases lists Crashlytics' versions newest first with their tags, and latest is the newest tagged one", () => {
   const { dir } = repoWithReleases();
   const [android] = JSON.parse(runIn(dir, 'releases', '--json').stdout);
-  assert.deepEqual(android.releases, [{ name: '1.4 (75)', tag: 'android/v1.4-75' }, { name: '1.3 (71)', tag: 'android/v1.3-71' }]);
+  assert.deepEqual(android.versions, [{ name: '1.4 (77)', tag: null }, { name: '1.4 (75)', tag: 'android/v1.4-75' }, { name: '1.3 (71)', tag: 'android/v1.3-71' }]);
+  assert.equal(android.latest, '1.4 (75)');
   assert.deepEqual(android.selected, ['1.4 (75)']);
 });
 
-test('an app whose config picks a release with no tag gets an error; the others are still listed', () => {
+test('an app with no versions with crashes gets an error; the others are still listed', () => {
   const dir = tempDir('dekaput-cli-');
   const git = (...args) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' });
   fs.mkdirSync(path.join(dir, '.github'));
@@ -59,14 +62,17 @@ test('an app whose config picks a release with no tag gets an error; the others 
   git('init', '-q');
   git('add', '-A');
   git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'init');
-  git('tag', 'ios/v1.4-77');
+  fs.mkdirSync(path.join(dir, '.dekaput'));
+  fs.writeFileSync(path.join(dir, '.dekaput/versions.json'), JSON.stringify({ ios: ['1.4 (77)', '1.4 (76)'] }));
   const listed = runIn(dir, 'releases', '--json');
   assert.equal(listed.status, 0);
   const [android, ios] = JSON.parse(listed.stdout);
-  assert.match(android.error, /"latest": no android tag matches/);
+  assert.match(android.error, /"latest": no versions with crashes/);
   assert.equal(android.selected, null);
-  assert.deepEqual(ios.releases, [{ name: '1.4 (77)', tag: 'ios/v1.4-77' }]);
-  assert.match(runIn(dir, 'releases').stdout, /android: "latest": no android tag/);
+  // No tags at all: latest is simply the newest version with crashes.
+  assert.deepEqual(ios.versions, [{ name: '1.4 (77)', tag: null }, { name: '1.4 (76)', tag: null }]);
+  assert.equal(ios.latest, '1.4 (77)');
+  assert.match(runIn(dir, 'releases').stdout, /android: "latest": no versions with crashes/);
 });
 
 test('list keeps only the picked releases; --release wins over the config', () => {

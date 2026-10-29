@@ -15,8 +15,8 @@
 //       packages: [com.example.app]    # the app's own code (Kotlin and Java; optional for ios)
 //       ignore-frames: [com.example.app.crashreporting]   # its own crash reporter
 //       probes: ["crash-reporting canary"]                # errors it raises on purpose
-//       release-tags: ["{platform}/v{version}-{build}", "v{version}-{build}"]   # {build} optional, as in "v{version}"
-//       releases: latest               # optional: latest, a release (tag, "1.4 (77)" or "1.4"), or a list; without it the agent asks
+//       release-tags: ["{platform}/v{version}-{build}"]   # optional: only when tags found by name are ambiguous
+//       releases: latest               # optional: latest, all, a release (tag, "1.4 (77)" or "1.4"), or a list; without it the agent asks
 //       modules:                      # where tests live, and what runs them
 //         - path: shared/presentation
 //           gradle-task: ":shared:presentation:testAndroidHostTest"
@@ -32,7 +32,6 @@ import { parse } from 'yaml';
 import { NOTIFY_TYPES } from './notify.mjs';
 
 export const CONFIG_FILES = ['.github/de-kaput.yml', 'de-kaput.yml'];
-export const DEFAULT_RELEASE_TAGS = ['{platform}/v{version}-{build}', 'v{version}-{build}'];
 const PLATFORMS = ['android', 'ios'];
 const TOP_KEYS = ['version', 'open-pull-requests-limit', 'reviewers', 'notify', 'apps'];
 const NOTIFY_KEYS = ['type', 'webhook-env'];
@@ -105,7 +104,8 @@ export function parseConfig(text) {
       packages: stringList(app.packages, 'packages', where, { required: app.platform === 'android' }),
       ignoreFrames: stringList(app['ignore-frames'], 'ignore-frames', where),
       probes: stringList(app.probes, 'probes', where),
-      releaseTags: app['release-tags'] === undefined ? DEFAULT_RELEASE_TAGS : releaseTags(app['release-tags'], where),
+      // null: tags are found by name; patterns only for a repo whose names are ambiguous.
+      releaseTags: app['release-tags'] === undefined ? null : releaseTags(app['release-tags'], where),
       // null: the config does not say, so the agent asks the person which release.
       releases: app.releases === undefined ? null : stringList(typeof app.releases === 'string' ? [app.releases] : app.releases, 'releases', where, { required: true }),
       modules,

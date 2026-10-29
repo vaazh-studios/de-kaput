@@ -28,8 +28,8 @@ de-kaput is a CLI and a runbook for Claude Code, Codex or any other coding agent
 
 ![dekaput list queues the release's crashes; for each crash, one at a time: its commit, a new git worktree, a test that crashes, dekaput verify, dekaput open-pr; one pull request per crash](assets/how-it-works.svg)
 
-1. The agent reads the release's top crashes from Crashlytics, through the Firebase MCP server.
-2. `dekaput list` skips crashes that already have a pull request and queues the rest.
+1. The agent reads the versions with crashes and the release's top crashes from Crashlytics, through the Firebase MCP server.
+2. `dekaput list` skips crashes that already have a pull request and queues the rest: crashes still in the newest release first, fresh or regressed ones first among them, then by users.
 3. For each crash: a fresh branch in its own worktree, a test that crashes, the fix. `dekaput verify` proves it, and `dekaput open-pr` opens the pull request.
 4. A crash no test can reach gets a note on its Crashlytics issue instead.
 
@@ -90,7 +90,7 @@ apps:                         # the apps you ship: Android, iOS or both
 
 </details>
 
-Tag each store release so de-kaput can find the commit it was built from. The default is `android/v1.4-75` and `ios/v1.4-77`. If you tag another way, set [`release-tags`](https://github.com/vaazh-studios/de-kaput/blob/main/docs/configuration.md#keys) to your pattern, such as `v{version}` or `{version}+{build}`. Then ask your agent:
+`latest` is the newest version with crashes. If you tag store releases, in any format (`android/v1.4-75`, `1.4+75`, `builds/release/75`), it is the newest tagged one instead, and on iOS the tag also gives the commit a build came from ([how tags are found](https://github.com/vaazh-studios/de-kaput/blob/main/docs/configuration.md#keys)). Then ask your agent:
 
 > Fix the latest release's crashes with de-kaput.
 
@@ -98,7 +98,7 @@ Tag each store release so de-kaput can find the commit it was built from. The de
 
 | Command | What it does |
 |---|---|
-| `dekaput releases` | Lists each app's tagged releases and the ones the config picks. |
+| `dekaput releases` | Lists each app's versions with crashes, their tags, the latest, and what the config picks. |
 | `dekaput list` | Builds the queue: what to fix, what gets a note, what is already handled. |
 | `dekaput verify` | Proves a fix branch and writes a receipt for it. |
 | `dekaput open-pr` | Opens the pull request, only with a matching receipt. |
@@ -132,7 +132,7 @@ Over 95% of those tokens are re-read from the prompt cache, the cheapest kind. O
 
 ## Docs
 
-- [Setup](https://github.com/vaazh-studios/de-kaput/blob/main/docs/setup.md): Codex, release tags, R8 mapping files, alerts, platforms.
+- [Setup](https://github.com/vaazh-studios/de-kaput/blob/main/docs/setup.md): Codex, release tags (optional), R8 mapping files, alerts, platforms.
 - [Configuration](https://github.com/vaazh-studios/de-kaput/blob/main/docs/configuration.md): every key in `de-kaput.yml`.
 - [GitHub Actions](https://github.com/vaazh-studios/de-kaput/blob/main/docs/ci.md): scheduled workflows for Claude Code and Codex.
 - [Runbook](https://github.com/vaazh-studios/de-kaput/blob/main/RUNBOOK.md): what the agent follows, step by step.

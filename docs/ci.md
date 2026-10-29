@@ -4,7 +4,7 @@ A recipe for running the de-kaput runbook from a scheduled GitHub Actions job, w
 
 ## Before the first run
 
-- **`.github/de-kaput.yml`** sets `releases` for every app (nobody is there to pick one) and, for alerts, `notify` (see the README's Configuration).
+- **`.github/de-kaput.yml`** sets `releases` for every app (nobody is there to pick one) and, for alerts, `notify` (see [Configuration](configuration.md)).
 - **Secrets** in the repo's Actions settings:
   - `ANTHROPIC_API_KEY` (Claude Code) or `OPENAI_API_KEY` (Codex).
   - `FIREBASE_SERVICE_ACCOUNT`: the JSON key of a Google service account that can read the app's Crashlytics and add notes. Prefer a dedicated account with only those permissions; `google-github-actions/auth` also supports Workload Identity Federation, which needs no key.

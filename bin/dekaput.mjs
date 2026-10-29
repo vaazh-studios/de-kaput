@@ -134,7 +134,7 @@ function releases(args) {
     console.log(`${app.name}: ${picks}`);
     for (const r of app.releases.slice(0, 10)) console.log(`  ${r.name.padEnd(12)} ${r.tag}`);
     if (app.releases.length > 10) console.log(`  (${app.releases.length - 10} older)`);
-    if (!app.releases.length) console.log('  no release tags match; see release-tags in the README');
+    if (!app.releases.length) console.log('  no release tags match; see release-tags in docs/configuration.md');
   }
 }
 

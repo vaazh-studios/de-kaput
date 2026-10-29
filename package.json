@@ -2,10 +2,30 @@
   "name": "de-kaput",
   "version": "0.0.5",
   "description": "Reproduce the crash with a test, fix it, open a pull request with proof. For native Android, native iOS and KMP apps.",
+  "keywords": [
+    "crashlytics",
+    "firebase-crashlytics",
+    "crash-reporting",
+    "android",
+    "ios",
+    "kotlin-multiplatform",
+    "kotlin",
+    "swift",
+    "claude-code",
+    "codex",
+    "ai-agents",
+    "mcp",
+    "developer-tools",
+    "cli"
+  ],
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/vaazh-studios/de-kaput.git"
+  },
+  "homepage": "https://github.com/vaazh-studios/de-kaput#readme",
+  "bugs": {
+    "url": "https://github.com/vaazh-studios/de-kaput/issues"
   },
   "type": "module",
   "bin": {

@@ -12,7 +12,7 @@
 import { classifyIssue } from './classify.mjs';
 import { deobfuscateEvent } from './mapping.mjs';
 import { evidenceMarkdown } from './evidence.mjs';
-import { tagFor } from './versions.mjs';
+import { inReleases, tagFor } from './versions.mjs';
 
 export const NOTE_PREFIX = 'de-kaput:';
 export const PR_LABEL = 'de-kaput';
@@ -40,7 +40,7 @@ export function listCrashes(events, { prs = [], options = {}, optionsFor = null,
   // A crash from a version the run was not asked for is set aside, so a wrong fetch never becomes a PR.
   const outsideReleases = (event) => {
     const wanted = releasesOf(event.platform.toLowerCase());
-    return wanted?.size && !wanted.has(event.version) ? { stop: 'skip', reason: `from ${event.version ?? 'an unknown version'}, not a release this run works on (${[...wanted].join(', ')})` } : null;
+    return wanted?.size && !inReleases(wanted, event.version) ? { stop: 'skip', reason: `from ${event.version ?? 'an unknown version'}, not a release this run works on (${[...wanted].join(', ')})` } : null;
   };
   const fatal = events
     .filter((e) => e.errorType === 'FATAL')

@@ -10,13 +10,13 @@ With the Firebase MCP server, for each app's `crashlytics-app-id` in `.github/de
 
 Every `crashlytics_get_report` call here takes a time range in its `filter`: `intervalStartTime` 89 days ago and `intervalEndTime` now, both ISO 8601 (Crashlytics refuses a start 90 or more days back). Without one it counts only the last 7 days, which under-counts a release that has been out longer.
 
-1. **Pick the releases.** Run `dekaput releases --json`. For each app it lists the tagged releases, newest first (`name` is Crashlytics' name for the build, `tag` its git tag), and `selected`, the releases the config's `releases` picks. An app whose config names a release that has no tag, or `latest` with no tags at all, gets an `error` instead of `selected`: tell the person what it says, and ask which release.
+1. **Pick the releases.** Run `dekaput releases --json`. For each app it lists the tagged releases, newest first (`name` is Crashlytics' name for the build, such as `1.4 (77)`, or the version alone, such as `1.4`, when the tags carry no build number; `tag` is its git tag), and `selected`, the releases the config's `releases` picks. An app whose config names a release that has no tag, or `latest` with no tags at all, gets an `error` instead of `selected`: tell the person what it says, and ask which release.
    - If you were told which releases to work on, use those.
    - Otherwise, if `selected` is set, use it.
    - Otherwise ask the person, once per app: the latest release (the first one listed), or one or more of the listed ones. If no one can answer (a scheduled run), stop and say to set `releases` in `.github/de-kaput.yml`.
 
-   Do not pick releases from Crashlytics' `topVersions` report: it also lists internal and local builds, and a version without a release tag is not a release.
-2. `crashlytics_get_report` with `report: "topIssues"`, `pageSize: 10` and `filter: { issueErrorTypes: ["FATAL"], versionDisplayNames: [<the releases' names>], intervalStartTime, intervalEndTime }`.
+   Do not pick releases from Crashlytics' `topVersions` report: it also lists internal and local builds, and a version without a release tag is not a release. It is only for finding the builds of a release named by its version alone (step 2).
+2. `crashlytics_get_report` with `report: "topIssues"`, `pageSize: 10` and `filter: { issueErrorTypes: ["FATAL"], versionDisplayNames: [<the releases' names>], intervalStartTime, intervalEndTime }`. For a release named by its version alone (`1.4`), first run `crashlytics_get_report` with `report: "topVersions"` and the same time range, and use every `displayName` it lists as `1.4 (<build>)` in place of `1.4`.
 3. For each issue: `crashlytics_batch_get_events` on its `sampleEvent`, and `crashlytics_list_notes`.
 4. Write one file per issue to `.dekaput/events/<issue id>.json` with **only** these fields, copied verbatim:
    `issueId, platform, errorType, title, subtitle, version` (the version's `displayName`), `device` (its `displayName`), `os` (its `displayName`), `exceptions, threads`, `revision` (the 40-character `revision: "..."` inside the event's `buildStamp` text, when present), `issue: { id, title, subtitle, eventsCount, impactedUsersCount, firstSeenVersion, lastSeenVersion, uri }` (from the report) and `notes: [{ body, createTime }]`.

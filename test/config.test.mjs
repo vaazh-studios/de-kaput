@@ -59,6 +59,7 @@ test('mistakes are named, not guessed', () => {
   assert.throws(() => parseConfig('version: 1\napps:\n  - platform: ios\n    packages: [a]\n'), /crashlytics-app-id/);
   assert.throws(() => parseConfig('version: 1\napps:\n  - platform: android\n    crashlytics-app-id: x\n'), /packages/);
   assert.throws(() => parseConfig('version: 1\napps:\n  - platform: ios\n    crashlytics-app-id: x\n    packages: [a]\n    module: []\n'), /unknown key "module"/);
+  assert.throws(() => parseConfig('version: 1\napps:\n  - platform: ios\n    crashlytics-app-id: x\n    release-tags: ["{platform}-{build}"]\n'), /"release-tags" patterns need \{version\}/);
 });
 
 test('.github/de-kaput.yml is found first, de-kaput.yml at the root otherwise, nothing is null', () => {

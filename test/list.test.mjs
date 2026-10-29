@@ -104,3 +104,9 @@ test('with releases picked, crashes from other versions are set aside', () => {
   }
   assert.deepEqual(queue.map((c) => c.issueId.slice(0, 4)), ['f26e']);
 });
+
+test('a release named by its version alone keeps every build of that version', () => {
+  const releasesOf = (platform) => (platform === 'android' ? new Set(['1.4']) : null);
+  const { crashes } = listCrashes(events, { options, sourceSetOf: inMain, releasesOf });
+  assert.ok(crashes.every((c) => c.stop !== 'skip' || !/not a release this run works on/.test(c.reason)));
+});

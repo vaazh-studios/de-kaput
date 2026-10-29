@@ -15,8 +15,8 @@
 //       packages: [com.example.app]    # the app's own code (Kotlin and Java; optional for ios)
 //       ignore-frames: [com.example.app.crashreporting]   # its own crash reporter
 //       probes: ["crash-reporting canary"]                # errors it raises on purpose
-//       release-tags: ["{platform}/v{version}-{build}", "v{version}-{build}"]
-//       releases: latest               # optional: latest, a release (tag or "1.4 (77)"), or a list; without it the agent asks
+//       release-tags: ["{platform}/v{version}-{build}", "v{version}-{build}"]   # {build} optional, as in "v{version}"
+//       releases: latest               # optional: latest, a release (tag, "1.4 (77)" or "1.4"), or a list; without it the agent asks
 //       modules:                      # where tests live, and what runs them
 //         - path: shared/presentation
 //           gradle-task: ":shared:presentation:testAndroidHostTest"
@@ -105,13 +105,20 @@ export function parseConfig(text) {
       packages: stringList(app.packages, 'packages', where, { required: app.platform === 'android' }),
       ignoreFrames: stringList(app['ignore-frames'], 'ignore-frames', where),
       probes: stringList(app.probes, 'probes', where),
-      releaseTags: app['release-tags'] === undefined ? DEFAULT_RELEASE_TAGS : stringList(app['release-tags'], 'release-tags', where),
+      releaseTags: app['release-tags'] === undefined ? DEFAULT_RELEASE_TAGS : releaseTags(app['release-tags'], where),
       // null: the config does not say, so the agent asks the person which release.
       releases: app.releases === undefined ? null : stringList(typeof app.releases === 'string' ? [app.releases] : app.releases, 'releases', where, { required: true }),
       modules,
     };
   });
   return { openPullRequestsLimit: limit, reviewers: stringList(raw.reviewers, 'reviewers', null), notify: notifyTargets(raw.notify), apps };
+}
+
+// Tag patterns; {build} is optional, but nothing can be read back from a tag without {version}.
+function releaseTags(value, where) {
+  const patterns = stringList(value, 'release-tags', where);
+  if (!patterns.every((p) => p.includes('{version}'))) fail(where, '"release-tags" patterns need {version}, such as "v{version}" or "{platform}/v{version}-{build}"');
+  return patterns;
 }
 
 // Where alerts go: each target names the environment variable that holds its webhook URL, never the URL.

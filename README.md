@@ -65,7 +65,7 @@ Commit `.github/de-kaput.yml`:
 
 ```yaml
 version: 1
-apps:
+apps:                         # the apps you ship: Android, iOS or both
   - platform: android
     crashlytics-app-id: "1:1234567890:android:abc123"
     packages: [com.example.app]
@@ -75,7 +75,22 @@ apps:
         gradle-task: ":app:testDebugUnitTest"
 ```
 
-Tag your store releases as `android/v1.4-75` and `ios/v1.4-77`, so de-kaput can find the commit each was built from. Then ask your agent:
+<details>
+<summary>An iOS app, under <code>apps</code></summary>
+
+```yaml
+  - platform: ios
+    crashlytics-app-id: "1:1234567890:ios:def456"
+    releases: latest
+    modules:
+      - path: ios                  # "." when the Xcode project is at the repo root
+        xcode-scheme: App
+        xcode-workspace: App.xcworkspace
+```
+
+</details>
+
+Tag each store release so de-kaput can find the commit it was built from. The default is `android/v1.4-75` and `ios/v1.4-77`. If you tag another way, set [`release-tags`](https://github.com/vaazh-studios/de-kaput/blob/main/docs/configuration.md#keys) to your pattern, such as `v{version}` or `{version}+{build}`. Then ask your agent:
 
 > Fix the latest release's crashes with de-kaput.
 

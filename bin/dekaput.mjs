@@ -20,7 +20,8 @@ const USAGE = `usage:
   dekaput verify --issue <id> --test <filter> --exception <class or signal> [--gradle-task <:module:task>]
                  --anchor <frame or class> [--anchor-kind frame|message] [--release <ref>]
                  (an Xcode filter is Target/Class/method or Target/function(); the exception EXC_BREAKPOINT, SIGABRT or an NSException name)
-  dekaput open-pr --title <title> --body-file <file> [--also <issue id>]`;
+  dekaput open-pr --title <title> --body-file <file> [--also <issue id>]
+  dekaput runbook   (prints the runbook the agent follows, the one that matches this CLI)`;
 
 function list(args) {
   const { values, positionals } = parseArgs({
@@ -78,6 +79,8 @@ try {
     // 3: reproduced, the fix is still to write; 1: rejected.
     process.exitCode = result.ok ? 0 : result.reproduced ? 3 : 1;
   } else if (command === 'open-pr') console.log(openPr(parseArgs({ args, options: OPEN_PR_OPTIONS }).values));
+  // Read from the installed package, wherever npm, pnpm or Volta put it.
+  else if (command === 'runbook') process.stdout.write(fs.readFileSync(new URL('../RUNBOOK.md', import.meta.url), 'utf8'));
   else {
     console.log(USAGE);
     process.exitCode = command && command !== 'help' ? 2 : 0;

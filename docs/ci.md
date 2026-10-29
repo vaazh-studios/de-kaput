@@ -45,14 +45,14 @@ jobs:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       - name: Install de-kaput and sign gh in
         run: |
-          npm install -g de-kaput
+          npm install -g de-kaput firebase-tools
           echo "${{ github.token }}" | gh auth login --with-token
       - name: Firebase MCP server, Crashlytics tools only
         run: |
           cat > "$RUNNER_TEMP/mcp.json" <<EOF
           {"mcpServers": {"firebase": {
-            "command": "npx",
-            "args": ["-y", "firebase-tools@latest", "mcp", "--tools", "crashlytics_get_report,crashlytics_batch_get_events,crashlytics_list_notes,crashlytics_create_note,firebase_read_resources"],
+            "command": "firebase",
+            "args": ["mcp", "--tools", "crashlytics_get_report,crashlytics_batch_get_events,crashlytics_list_notes,crashlytics_create_note,firebase_read_resources"],
             "env": {"GOOGLE_APPLICATION_CREDENTIALS": "$GOOGLE_APPLICATION_CREDENTIALS"}
           }}}
           EOF
@@ -101,16 +101,22 @@ jobs:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       - name: Install de-kaput and sign gh in
         run: |
-          npm install -g de-kaput
+          npm install -g de-kaput firebase-tools
           echo "${{ github.token }}" | gh auth login --with-token
       - name: Codex home with the Firebase MCP server
         run: |
           mkdir -p "$RUNNER_TEMP/codex-home"
           cat > "$RUNNER_TEMP/codex-home/config.toml" <<EOF
+          # Nobody is there to approve anything; the runbook's rules bound the run.
+          approval_policy = "never"
+
           [mcp_servers.firebase]
-          command = "npx"
-          args = ["-y", "firebase-tools@latest", "mcp", "--tools", "crashlytics_get_report,crashlytics_batch_get_events,crashlytics_list_notes,crashlytics_create_note,firebase_read_resources"]
+          command = "firebase"
+          args = ["mcp", "--tools", "crashlytics_get_report,crashlytics_batch_get_events,crashlytics_list_notes,crashlytics_create_note,firebase_read_resources"]
           env = { GOOGLE_APPLICATION_CREDENTIALS = "$GOOGLE_APPLICATION_CREDENTIALS" }
+          startup_timeout_sec = 60 # the default is 10
+          required = true # fail the run instead of going on without Crashlytics
+          default_tools_approval_mode = "auto" # run the five tools without asking
           EOF
       - uses: openai/codex-action@v1
         env:
@@ -130,5 +136,7 @@ jobs:
 
 - **Pull request checks:** pull requests opened with the workflow's `GITHUB_TOKEN` don't start other workflows, so your PR checks won't run on them. To have them run, sign `gh` in with a fine-grained token or a GitHub App token instead.
 - **Tool access:** the Claude Code example allows all of `Bash`, since the runbook runs git, Gradle or `xcodebuild`, `gh` and `dekaput`. You can narrow it, for example to `Bash(dekaput:*),Bash(git:*),Bash(gh:*),Bash(./gradlew:*)`.
+- **Starting the Firebase server:** both workflows install `firebase-tools` in an earlier step and start it as `firebase mcp`. Fetching it with `npx` at startup can outlast an agent's MCP startup timeout (Codex waits 10 seconds by default).
+- **Codex approvals:** the `config.toml` above sets `approval_policy = "never"` and `default_tools_approval_mode = "auto"` on the Firebase server, so nothing waits for a person. If a run reports a Crashlytics call as rejected, check those two settings against your Codex version.
 - **R8 mapping:** a step before the agent can download the release build's `mapping.txt` from wherever your release job keeps it, and the prompt can name its path for `list --mapping`.
 - **One run, one queue:** `open-pull-requests-limit` caps open de-kaput PRs across runs, and a crash with a de-kaput PR or note is never picked up again, so a daily schedule doesn't pile up duplicates.

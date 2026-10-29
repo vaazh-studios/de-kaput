@@ -15,6 +15,7 @@
   "files": [
     "bin",
     "src",
+    "skills",
     "RUNBOOK.md"
   ],
   "engines": {

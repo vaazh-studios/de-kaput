@@ -1,6 +1,6 @@
 # de-kaput
 
-Your app went kaput. de-kaput reproduces the crash with a test, fixes it, and opens a pull request with the test and the fix.
+Your app went kaput. de-kaput is a CLI and a runbook for your coding agent (Claude Code, Codex or any other): the agent reproduces each crash with a test and fixes it, and de-kaput checks that proof and opens one pull request per crash with the test and the fix.
 
 It never fixes blind: no pull request without a test that fails with the crash's own exception before the fix and passes after it. A person always reviews and merges.
 
@@ -74,10 +74,10 @@ On the machine the agent runs on: steps 1 to 4 once per machine, 5 and 6 once pe
      args = ["-y", "firebase-tools@latest", "mcp", "--tools", "crashlytics_get_report,crashlytics_batch_get_events,crashlytics_list_notes,crashlytics_create_note,firebase_read_resources"]
      ```
 3. **Sign in to Firebase** with `npx firebase-tools login`, as an account that can see the app's Crashlytics. Writing the `de-kaput:` notes needs write access to Crashlytics.
-4. **Sign in to GitHub** with `gh auth login`, as an account that can push branches to the repo. `open-pr` pushes the fix branch and opens the pull request; it never pushes to the default branch.
+4. **Sign in to GitHub** with `gh auth login`, as an account that can push branches to the repo. The repo must be on GitHub with its remote named `origin`: `list` looks for de-kaput pull requests there, and `open-pr` pushes the fix branch and opens the pull request there. It never pushes to the default branch.
 5. **Commit `.github/de-kaput.yml`** to the default branch (see Configuration).
 6. **Tell the agent about de-kaput.** Both point it at the runbook installed with the CLI:
-   - Claude Code: copy `skills/de-kaput/` into your project's `.claude/skills/`.
+   - Claude Code: from the project's root, `mkdir -p .claude/skills && cp -R "$(npm root -g)/@vaazh-studios/de-kaput/skills/de-kaput" .claude/skills/`.
    - Codex: add one line to your project's `AGENTS.md`: "To fix a Crashlytics crash, follow the de-kaput runbook installed with the CLI, `$(npm root -g)/@vaazh-studios/de-kaput/RUNBOOK.md`: one crash at a time, one pull request per crash."
 
 The app's tests must also run on that machine: Gradle with its `local.properties`, or Xcode with an iPhone simulator.

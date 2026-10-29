@@ -32,7 +32,16 @@ export function githubRepoOf(url) {
 }
 
 // origin's GitHub repo. Every gh call names it: in a fork, gh would otherwise pick the upstream repo.
-export const originRepo = (root) => githubRepoOf(git(['remote', 'get-url', 'origin'], root));
+export function originRepo(root) {
+  let url;
+  try {
+    // git's own "No such remote" stays quiet; the reason below says it plainly.
+    url = execFileSync('git', ['remote', 'get-url', 'origin'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch {
+    throw new Error('this repo has no remote named origin; de-kaput reads and opens its pull requests on origin, a GitHub repo (git remote add origin <url>)');
+  }
+  return githubRepoOf(url);
+}
 
 export const mergeBase = (root, head = 'HEAD') => git(['merge-base', head, defaultBranch(root)], root);
 

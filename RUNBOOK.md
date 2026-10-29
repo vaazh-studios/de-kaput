@@ -20,7 +20,29 @@ Every `crashlytics_get_report` call here takes a time range in its `filter`: `in
 3. For each issue: `crashlytics_batch_get_events` on its `sampleEvent`, and `crashlytics_list_notes`.
 4. Write one file per issue to `.dekaput/events/<issue id>.json` with **only** these fields, copied verbatim:
    `issueId, platform, errorType, title, subtitle, version` (the version's `displayName`), `device` (its `displayName`), `os` (its `displayName`), `exceptions, threads`, `revision` (the event's `buildStamp` revision, when present), `issue: { id, title, subtitle, eventsCount, impactedUsersCount, uri }` (from the report) and `notes: [{ body, createTime }]`.
-   Never copy `user`, `installationUuid`, `customKeys`, `logs` or `breadcrumbs`. Never commit `.dekaput/`: create `.dekaput/.gitignore` containing `*` before writing the events (`list` and `verify` add it too).
+   Never copy `user`, `installationUuid`, `customKeys`, `logs` or `breadcrumbs`. The tools still return them to you: use them to understand the crash if they help, but they never go into a file, a commit, a pull request or a note. Never commit `.dekaput/`: create `.dekaput/.gitignore` containing `*` before writing the events (`list` and `verify` add it too).
+
+   `platform` is `ANDROID` or `IOS`. `exceptions` and `threads` stay the text `crashlytics_batch_get_events` gives: the exception line, then one `at <symbol> (<file>:<line>)` line per frame. The counts stay the strings the report gives. One Android event file:
+
+   ```json
+   {
+     "issueId": "e044059c5755177f4b64b53959007b68",
+     "platform": "ANDROID",
+     "errorType": "FATAL",
+     "title": "androidx.compose.runtime.saveable.SaveableStateHolderImpl.SaveableStateProvider$lambda$0$1$0",
+     "subtitle": "java.lang.IllegalArgumentException - Key com.example.app.ui.tabs.HomeTab:currentTab was used multiple times",
+     "version": "1.4 (75)",
+     "device": "Samsung (SM-G998N)",
+     "os": "Android (14)",
+     "exceptions": "java.lang.IllegalArgumentException: Key com.example.app.ui.tabs.HomeTab:currentTab was used multiple times\nat androidx.compose.runtime.saveable.SaveableStateHolderImpl.SaveableStateProvider$lambda$0$1$0 (SaveableStateHolder.kt:88)\nat com.example.app.ui.tabs.TabHost.Content (TabHost.kt:41)",
+     "threads": "",
+     "revision": "849c6d7ac362fbf0875cfe7f37d0badd73680397",
+     "issue": { "id": "e044059c5755177f4b64b53959007b68", "title": "androidx.compose.runtime.saveable.SaveableStateHolderImpl.SaveableStateProvider$lambda$0$1$0", "subtitle": "java.lang.IllegalArgumentException - Key com.example.app.ui.tabs.HomeTab:currentTab was used multiple times", "eventsCount": "5", "impactedUsersCount": "2", "uri": "https://console.firebase.google.com/project/example/crashlytics/app/android:com.example.app/issues/e044059c5755177f4b64b53959007b68" },
+     "notes": []
+   }
+   ```
+
+   An iOS event has no `revision`, and its frames are Swift or Objective-C, such as `at static JSONFeedParser.parse(_:) (JSONFeedParser.swift:56)`.
 
 ## 2. Build the queue
 
@@ -37,6 +59,8 @@ Work through `queue` in order, **one crash at a time**. Each entry's `stop` says
 
 - `attempt`: go to step 3. Keep the entry's `issueId` (the full id), `exception`, `anchor.text`, `anchor.kind` and `release` for step 4, and its `twins` (other issue ids of the same crash, such as an R8-renamed copy) for step 5.
 - `note`: add a Crashlytics note that starts with `de-kaput:` and gives the reason, then go to the next crash.
+
+`waiting` holds the attempts the PR limit held back. They come back on the next run; name them in the summary.
 
 A crash stays out of the queue once it is handled: a pull request labelled `de-kaput` names its full issue id (open or closed: a person answered it), or the issue has a note starting with `de-kaput:`. Only a person puts one back, by removing the `de-kaput` label from its closed pull request and deleting its `de-kaput:` notes.
 

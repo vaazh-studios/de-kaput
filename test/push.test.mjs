@@ -45,3 +45,10 @@ test("origin's GitHub repo is read from its URL, so a fork's PR never goes upstr
   assert.equal(githubRepoOf('ssh://git@github.com/octo/app.name'), 'octo/app.name');
   assert.throws(() => githubRepoOf('/tmp/origin.git'), /not a GitHub repository/);
 });
+
+test('a repo with no origin remote gets a plain reason, not a git error', async () => {
+  const { originRepo } = await import('../src/git.mjs');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dekaput-no-origin-'));
+  execFileSync('git', ['init', '-q'], { cwd: dir });
+  assert.throws(() => originRepo(dir), /no remote named origin/);
+});

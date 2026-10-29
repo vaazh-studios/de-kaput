@@ -19,7 +19,7 @@ import { releasesFor, selectReleases } from '../src/versions.mjs';
 const USAGE = `usage:
   dekaput releases [--app <name>] [--json]
                (each app's tagged releases, newest first, and the ones the config's "releases" picks)
-  dekaput list [--app <name>] [--release <release>]... [--mapping <mapping.txt>] [--max-prs <n>] [--json] <event files>
+  dekaput list [--app <name>] [--release <release>]... [--mapping <mapping.txt>] [--max-prs <n>] [--prs <prs.json>] [--json] <event files>
                (a release is latest, a tag such as ios/v1.4-77, or a Crashlytics name such as "1.4 (77)")
                (without .github/de-kaput.yml: --app-package <pkg> [--ignore-frame <pkg>] [--probe <regex>])
   dekaput verify --issue <id> --test <filter> --exception <class or signal> [--gradle-task <:module:task>]

@@ -15,11 +15,11 @@ Every `crashlytics_get_report` call here takes a time range in its `filter`: `in
    - Otherwise, if `selected` is set, use it.
    - Otherwise ask the person, once per app: the latest release (the first one listed), or one or more of the listed ones. If no one can answer (a scheduled run), stop and say to set `releases` in `.github/de-kaput.yml`.
 
-   Crashlytics' `topVersions` report also lists internal and local builds; a version without a release tag is not a release.
+   Do not pick releases from Crashlytics' `topVersions` report: it also lists internal and local builds, and a version without a release tag is not a release.
 2. `crashlytics_get_report` with `report: "topIssues"`, `pageSize: 10` and `filter: { issueErrorTypes: ["FATAL"], versionDisplayNames: [<the releases' names>], intervalStartTime, intervalEndTime }`.
 3. For each issue: `crashlytics_batch_get_events` on its `sampleEvent`, and `crashlytics_list_notes`.
 4. Write one file per issue to `.dekaput/events/<issue id>.json` with **only** these fields, copied verbatim:
-   `issueId, platform, errorType, title, subtitle, version` (the version's `displayName`), `device` (its `displayName`), `os` (its `displayName`), `exceptions, threads`, `revision` (the event's `buildStamp` revision, when present), `issue: { id, title, subtitle, eventsCount, impactedUsersCount, firstSeenVersion, lastSeenVersion, uri }` (from the report) and `notes: [{ body, createTime }]`.
+   `issueId, platform, errorType, title, subtitle, version` (the version's `displayName`), `device` (its `displayName`), `os` (its `displayName`), `exceptions, threads`, `revision` (the 40-character `revision: "..."` inside the event's `buildStamp` text, when present), `issue: { id, title, subtitle, eventsCount, impactedUsersCount, firstSeenVersion, lastSeenVersion, uri }` (from the report) and `notes: [{ body, createTime }]`.
    Never copy `user`, `installationUuid`, `customKeys`, `logs` or `breadcrumbs`. The tools still return them to you: use them to understand the crash if they help, but they never go into a file, a commit, a pull request or a note. Never commit `.dekaput/`: create `.dekaput/.gitignore` containing `*` before writing the events (`list` and `verify` add it too).
 
    `platform` is `ANDROID` or `IOS`. `exceptions` and `threads` stay the text `crashlytics_batch_get_events` gives: the exception line, then one `at <symbol> (<file>:<line>)` line per frame. The counts stay the strings the report gives. One Android event file:
@@ -53,7 +53,7 @@ On Android with R8, Crashlytics reads the frames back to real names but not the 
 dekaput list --json [--release '<name>']... .dekaput/events/*.json
 ```
 
-Pass `--release` once for each release you were told or the person picked, by its `tag` when there is one (a tag names one app's release; a Crashlytics name applies to every app). An app with no `--release` of its own keeps the config's pick. `list` sets aside crashes from any other version. It reads the app's packages, crash-reporter frames, probes, release tags and PR limit from `.github/de-kaput.yml`. Without that file, pass `--app-package <package>`, `--ignore-frame <package>` and `--probe <regex>`. `--max-prs <n>` (default 5) caps how many de-kaput pull requests can be open at once, like Dependabot's `open-pull-requests-limit`; crashes past it wait for the next run. Without `--json` it prints a short list for people, with issue ids cut to 8 characters and without the values step 4 needs.
+Pass `--release` once for each release you were told or the person picked, by its `tag` when there is one (a tag names one app's release; a Crashlytics name applies to every app). An app with no `--release` of its own keeps the config's pick. `list` sets aside crashes from any other version. It reads the app's packages, crash-reporter frames, probes, release tags and PR limit from `.github/de-kaput.yml`. Without that file, pass `--app-package <package>`, `--ignore-frame <package>` and `--probe <regex>`. `--max-prs <n>` (default 5) caps how many de-kaput pull requests can be open at once, like Dependabot's `open-pull-requests-limit`; crashes past it wait for the next run. `--prs <file>` reads the de-kaput pull requests from a JSON file (`[]` for none) instead of asking GitHub, for a dry run without GitHub access. Without `--json` it prints a short list for people, with issue ids cut to 8 characters and without the values step 4 needs.
 
 Work through `queue` in order, **one crash at a time**. Each entry's `stop` says what to do:
 
@@ -61,6 +61,8 @@ Work through `queue` in order, **one crash at a time**. Each entry's `stop` says
 - `note`: add a Crashlytics note that starts with `de-kaput:` and gives the reason, then go to the next crash.
 
 When the config has `notify` targets, run `dekaput notify --issue <issueId> --note '<the note>' --uri '<the issue uri>'` after every `de-kaput:` note you add, in this step or later, except the `de-kaput: PR <url>` note: `open-pr` posts its own alert.
+
+When an entry's `internalDevice` is true, its sample event came from an emulator or simulator, often a developer's local build rather than a store install. Check which devices the crash comes from: `crashlytics_get_report` with `report: "topAndroidDevices"` (or `"topAppleDevices"`) and `filter: { issueId, versionDisplayNames, intervalStartTime, intervalEndTime }`. If every event is from emulators or simulators, add a `de-kaput:` note saying the crash comes only from local builds, instead of working it. Otherwise work it as usual, and say in the note or the PR body that the sample came from an emulator or simulator.
 
 `waiting` holds the attempts the PR limit held back. They come back on the next run; name them in the summary.
 
@@ -73,9 +75,11 @@ git fetch origin
 git worktree add --no-track -b de-kaput/<first 8 of the issue id>-<slug> <a folder outside the checkout> origin/HEAD
 ```
 
+If `origin/HEAD` is missing (a remote added by hand), run `git remote set-head origin --auto` once first.
+
 Work only in that worktree. Read the repo's own agent instructions (`AGENTS.md`, `CLAUDE.md`) first.
 
-Write the test against the code as it is on the default branch. It calls the code the way the app reaches it and lets the failure escape. Do not use `assertFailsWith`, do not throw the exception yourself, do not use reflection, and do not edit existing tests. Name the test after what the user saw, not the issue id; put the issue id in its doc comment. Commit it.
+Write the test against the code as it is on the default branch. It calls the code the way the app reaches it and lets the failure escape. Do not use `assertFailsWith`, do not throw the exception yourself, do not use reflection, and do not change or remove existing tests; adding a new test class or function to an existing test file is fine. Name the test after what the user saw, not the issue id; put the issue id in its doc comment. Commit it.
 
 `verify` rejects a branch that changes build, test-runner or CI files (Gradle files and `libs.versions.toml`, `package.json`, Xcode project, scheme and test plan files, `Package.swift`, `Podfile`, anything under `.github/` or `.claude/`), and a test that is switched off, sleeps, retries, skips, runs only on a condition (`assume`) or expects its own failure. A fix that needs one of those, such as a dependency upgrade, cannot be proven: add a `de-kaput:` note saying what it needs, and go to the next crash.
 

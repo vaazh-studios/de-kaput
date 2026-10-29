@@ -1,11 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import {
   caughtFailure, crashFailure, crashReportFor, fatalMessage, ownImages, parseCaughtException, parseCrashLog, parseTestResults, pickDestination, uncaughtIn,
 } from '../src/runners/xcode.mjs';
+import { tempDir } from './tmp.mjs';
 
 const fixture = (name) => fs.readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8');
 
@@ -97,7 +97,7 @@ test('in an app-hosted test, image names hold spaces and the stack starts at the
 });
 
 test("own images are the build's products: bundles by name, dylibs by file", () => {
-  const products = fs.mkdtempSync(path.join(os.tmpdir(), 'dekaput-products-'));
+  const products = tempDir('dekaput-products-');
   const app = path.join(products, 'Debug-iphonesimulator', 'Shop App.app');
   fs.mkdirSync(path.join(app, 'PlugIns', 'Shop AppTests.xctest'), { recursive: true });
   fs.mkdirSync(path.join(app, 'Frameworks', 'ShopKit.framework'), { recursive: true });
@@ -129,7 +129,7 @@ test('the simulator is an iPhone on the newest iOS', () => {
 });
 
 test("without an attached crash log, the crash reporter's report of the test is used: recent and naming the test", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dekaput-reports-'));
+  const dir = tempDir('dekaput-reports-');
   const [header, body] = [fixture('ios-swift-trap.ips').split('\n')[0], JSON.parse(fixture('ios-swift-trap.ips').split('\n').slice(1).join('\n'))];
   const write = (name, report, age = 0) => {
     const file = path.join(dir, name);

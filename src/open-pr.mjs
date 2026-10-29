@@ -81,9 +81,17 @@ export function openPr(opts) {
   if (!check.ok) throw new Error(check.reason);
 
   const body = `${fs.readFileSync(opts['body-file'], 'utf8').trim()}\n\n${proofSection(check.receipt, opts.also)}\n`;
-  const bodyFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'dekaput-pr-')), 'body.md');
+  const bodyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dekaput-pr-'));
+  const bodyFile = path.join(bodyDir, 'body.md');
   fs.writeFileSync(bodyFile, body);
+  try {
+    return createPr(root, { branch, base, title: opts.title, bodyFile });
+  } finally {
+    fs.rmSync(bodyDir, { recursive: true, force: true });
+  }
+}
 
+function createPr(root, { branch, base, title, bodyFile }) {
   // The PR goes to origin, never to the repo a fork came from.
   const repo = originRepo(root);
   pushBranch(root, branch, base);
@@ -95,7 +103,7 @@ export function openPr(opts) {
   const me = execFileSync('gh', ['api', 'user', '-q', '.login'], { cwd: root, encoding: 'utf8' }).trim();
   const reviewers = (loadConfig(root)?.reviewers ?? []).filter((r) => r.toLowerCase() !== me.toLowerCase());
   const reviewerArgs = reviewers.length ? ['--reviewer', reviewers.join(',')] : [];
-  return execFileSync('gh', ['pr', 'create', '--repo', repo, '--base', base, '--head', branch, '--title', opts.title, '--body-file', bodyFile, '--label', PR_LABEL, ...reviewerArgs], {
+  return execFileSync('gh', ['pr', 'create', '--repo', repo, '--base', base, '--head', branch, '--title', title, '--body-file', bodyFile, '--label', PR_LABEL, ...reviewerArgs], {
     cwd: root,
     encoding: 'utf8',
   }).trim();

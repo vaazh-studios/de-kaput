@@ -47,7 +47,7 @@ export function evidenceMarkdown(issue, events) {
     redact(issue.subtitle ?? ''),
     '',
     `- Events: ${issue.eventsCount}, users: ${issue.impactedUsersCount}`,
-    `- First seen ${issue.firstSeenVersion}, last seen ${issue.lastSeenVersion}; sampled builds: ${tally(events.map((e) => e.version))}`,
+    `- First seen ${issue.firstSeenVersion ?? 'unknown'}, last seen ${issue.lastSeenVersion ?? 'unknown'}; sampled builds: ${tally(events.map((e) => e.version))}`,
     `- Devices: ${tally(devices)}`,
     `- OS: ${tally(events.map((e) => e.os))}`,
     `- [Open in Crashlytics](${issue.uri})`,

@@ -98,15 +98,24 @@ function releases(args) {
   const apps = config
     ? (values.app ? [appFor(config, '', values.app)] : config.apps)
     : ['android', 'ios'].map((platform) => ({ name: platform, platform, releaseTags: undefined, releases: null }));
+  // One app's unknown release is that app's problem: the others are still listed.
+  const picked = (app) => {
+    try {
+      return { selected: app.releases ? [...selectReleases(app.platform, app.releases, tags, app.releaseTags)] : null };
+    } catch (error) {
+      return { selected: null, error: error.message };
+    }
+  };
   const result = apps.map((app) => ({
     name: app.name,
     platform: app.platform,
     releases: releasesFor(app.platform, tags, app.releaseTags).map(({ name, tag }) => ({ name, tag })),
-    selected: app.releases ? [...selectReleases(app.platform, app.releases, tags, app.releaseTags)] : null,
+    ...picked(app),
   }));
   if (values.json) return console.log(JSON.stringify(result, null, 2));
   for (const app of result) {
-    console.log(`${app.name}: ${app.selected ? `the config picks ${app.selected.join(', ')}` : 'the config picks none; ask which release'}`);
+    const picks = app.error ?? (app.selected ? `the config picks ${app.selected.join(', ')}` : 'the config picks none; ask which release');
+    console.log(`${app.name}: ${picks}`);
     for (const r of app.releases.slice(0, 10)) console.log(`  ${r.name.padEnd(12)} ${r.tag}`);
     if (app.releases.length > 10) console.log(`  (${app.releases.length - 10} older)`);
     if (!app.releases.length) console.log('  no release tags match; see release-tags in the README');

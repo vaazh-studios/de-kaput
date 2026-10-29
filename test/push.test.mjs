@@ -2,14 +2,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { pushBranch } from '../src/open-pr.mjs';
+import { tempDir } from './tmp.mjs';
 
 // The first live run's setup: push.default=upstream, and a fix branch cut from
 // origin/main, so it tracks main. A bare `git push origin <branch>` went to main.
 test('the fix branch is pushed to its own branch, never to the default branch', () => {
-  const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'dekaput-push-')));
+  const tmp = tempDir('dekaput-push-');
   const remote = path.join(tmp, 'remote.git');
   const work = path.join(tmp, 'work');
   const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
@@ -48,7 +48,7 @@ test("origin's GitHub repo is read from its URL, so a fork's PR never goes upstr
 
 test('a repo with no origin remote gets a plain reason, not a git error', async () => {
   const { originRepo } = await import('../src/git.mjs');
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dekaput-no-origin-'));
+  const dir = tempDir('dekaput-no-origin-');
   execFileSync('git', ['init', '-q'], { cwd: dir });
   assert.throws(() => originRepo(dir), /no remote named origin/);
 });

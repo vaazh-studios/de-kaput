@@ -61,3 +61,10 @@ test('redact masks dashed UUIDs, installation ids and uids joined by an undersco
 test('redact keeps class names that look like ids', () => {
   assert.equal(redact('at com.a.SaveableStateHolderImplLambda.invoke'), 'at com.a.SaveableStateHolderImplLambda.invoke');
 });
+
+test('an event file without the first and last seen versions says unknown, not undefined', () => {
+  const { firstSeenVersion, lastSeenVersion, ...older } = issue;
+  const markdown = evidenceMarkdown(older, [event]);
+  assert.match(markdown, /First seen unknown, last seen unknown/);
+  assert.doesNotMatch(markdown, /undefined/);
+});

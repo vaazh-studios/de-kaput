@@ -2,9 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { tempDir } from './tmp.mjs';
 
 const bin = fileURLToPath(new URL('../bin/dekaput.mjs', import.meta.url));
 const run = (...args) => spawnSync('node', [bin, ...args], { cwd: '/', encoding: 'utf8' });
@@ -31,7 +31,7 @@ test('--version prints the package version; an unknown command exits 2', () => {
 
 // A repo with release tags, a config that picks the latest Android release, and two crash events.
 function repoWithReleases() {
-  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'dekaput-cli-')));
+  const dir = tempDir('dekaput-cli-');
   const git = (...args) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' });
   fs.mkdirSync(path.join(dir, '.github'));
   fs.writeFileSync(path.join(dir, '.github/de-kaput.yml'), 'version: 1\napps:\n  - platform: android\n    crashlytics-app-id: "1:1:android:x"\n    packages: [com.example.app]\n    releases: latest\n');
@@ -49,6 +49,24 @@ test('releases lists the tagged releases newest first and what the config picks'
   const [android] = JSON.parse(runIn(dir, 'releases', '--json').stdout);
   assert.deepEqual(android.releases, [{ name: '1.4 (75)', tag: 'android/v1.4-75' }, { name: '1.3 (71)', tag: 'android/v1.3-71' }]);
   assert.deepEqual(android.selected, ['1.4 (75)']);
+});
+
+test('an app whose config picks a release with no tag gets an error; the others are still listed', () => {
+  const dir = tempDir('dekaput-cli-');
+  const git = (...args) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' });
+  fs.mkdirSync(path.join(dir, '.github'));
+  fs.writeFileSync(path.join(dir, '.github/de-kaput.yml'), 'version: 1\napps:\n  - platform: android\n    crashlytics-app-id: "1:1:android:x"\n    packages: [com.example.app]\n    releases: latest\n  - platform: ios\n    crashlytics-app-id: "1:1:ios:x"\n');
+  git('init', '-q');
+  git('add', '-A');
+  git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'init');
+  git('tag', 'ios/v1.4-77');
+  const listed = runIn(dir, 'releases', '--json');
+  assert.equal(listed.status, 0);
+  const [android, ios] = JSON.parse(listed.stdout);
+  assert.match(android.error, /"latest": no android tag matches/);
+  assert.equal(android.selected, null);
+  assert.deepEqual(ios.releases, [{ name: '1.4 (77)', tag: 'ios/v1.4-77' }]);
+  assert.match(runIn(dir, 'releases').stdout, /android: "latest": no android tag/);
 });
 
 test('list keeps only the picked releases; --release wins over the config', () => {

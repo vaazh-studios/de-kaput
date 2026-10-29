@@ -2,10 +2,10 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { branchDiff, sha256 } from '../src/git.mjs';
 import { checkReceipt, writeReceipt } from '../src/receipt.mjs';
+import { tempDir } from './tmp.mjs';
 
 let repo;
 const git = (...args) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' }).trim();
@@ -22,7 +22,7 @@ function receipt({ result = 'proven', base = git('merge-base', 'HEAD', 'origin/m
 }
 
 beforeEach(() => {
-  repo = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'dekaput-receipt-')));
+  repo = tempDir('dekaput-receipt-');
   git('init', '-q', '-b', 'main');
   git('update-ref', 'refs/remotes/origin/main', commit('one'));
   git('checkout', '-q', '-b', 'de-kaput/e044059c-tabs');

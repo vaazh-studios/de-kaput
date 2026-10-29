@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { appFor, loadConfig, moduleFor, moduleForAnyApp, parseConfig } from '../src/config.mjs';
+import { tempDir } from './tmp.mjs';
 
 const GOOD = `
 version: 1
@@ -33,7 +33,7 @@ apps:
         xcode-workspace: App.xcworkspace
 `;
 
-const dir = () => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'dekaput-config-')));
+const dir = () => tempDir('dekaput-config-');
 
 test('a full config reads back with its values', () => {
   const config = parseConfig(GOOD);

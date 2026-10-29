@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/de-kaput)](https://www.npmjs.com/package/de-kaput) [![Node](https://img.shields.io/node/v/de-kaput)](https://www.npmjs.com/package/de-kaput) [![License](https://img.shields.io/npm/l/de-kaput)](https://github.com/vaazh-studios/de-kaput/blob/main/LICENSE) [![Platforms: Android, iOS, KMP](https://img.shields.io/badge/platforms-Android%20%7C%20iOS%20%7C%20KMP-3DDC84)](https://github.com/vaazh-studios/de-kaput/blob/main/docs/setup.md#platforms) [![Crash reports: Firebase Crashlytics](https://img.shields.io/badge/crash%20reports-Firebase%20Crashlytics-FFA000)](https://firebase.google.com/docs/crashlytics) [![Agents: Claude Code, Codex, any](https://img.shields.io/badge/agents-Claude%20Code%20%7C%20Codex%20%7C%20any-8A63D2)](https://github.com/vaazh-studios/de-kaput/blob/main/docs/setup.md)
 
-**Your Android, iOS or KMP app went kaput (crashed). Your coding agent fixes each crash, and proves it.**
+**Your Android, iOS or KMP app went kaput (crashed). Your coding agent first writes a test that crashes the same way, proving the bug, then fixes the code and proves the fix: the same test now passes.**
 
 de-kaput is a CLI and a runbook for Claude Code, Codex or any other coding agent. The agent reproduces each Crashlytics crash with a test, then fixes it. de-kaput checks that proof and opens one pull request per crash. You review and merge.
 

@@ -1,6 +1,6 @@
 {
   "name": "de-kaput",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Reproduce the crash with a test, fix it, open a pull request with proof. For native Android, native iOS and KMP apps.",
   "license": "Apache-2.0",
   "repository": {

@@ -60,6 +60,8 @@ Work through `queue` in order, **one crash at a time**. Each entry's `stop` says
 - `attempt`: go to step 3. Keep the entry's `issueId` (the full id), `exception`, `anchor.text`, `anchor.kind` and `release` for step 4, and its `twins` (other issue ids of the same crash, such as an R8-renamed copy) for step 5.
 - `note`: add a Crashlytics note that starts with `de-kaput:` and gives the reason, then go to the next crash.
 
+When the config has `notify` targets, run `dekaput notify --issue <issueId> --note '<the note>' --uri '<the issue uri>'` after every `de-kaput:` note you add, in this step or later, except the `de-kaput: PR <url>` note: `open-pr` posts its own alert.
+
 `waiting` holds the attempts the PR limit held back. They come back on the next run; name them in the summary.
 
 A crash stays out of the queue once it is handled: a pull request labelled `de-kaput` names its full issue id (open or closed: a person answered it), or the issue has a note starting with `de-kaput:`. Only a person puts one back, by removing the `de-kaput` label from its closed pull request and deleting its `de-kaput:` notes.

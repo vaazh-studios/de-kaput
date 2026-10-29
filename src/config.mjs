@@ -5,6 +5,9 @@
 //   version: 1
 //   open-pull-requests-limit: 5        # optional, like Dependabot's
 //   reviewers: [octocat]               # optional, asked to review every PR
+//   notify:                            # optional: alerts when a PR opens or a note is added
+//     - type: discord                  # discord | slack
+//       webhook-env: DEKAPUT_DISCORD_WEBHOOK   # the environment variable holding the webhook URL
 //   apps:
 //     - name: android                  # optional, defaults to the platform
 //       platform: android              # android | ios
@@ -26,11 +29,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parse } from 'yaml';
+import { NOTIFY_TYPES } from './notify.mjs';
 
 export const CONFIG_FILES = ['.github/de-kaput.yml', 'de-kaput.yml'];
 export const DEFAULT_RELEASE_TAGS = ['{platform}/v{version}-{build}', 'v{version}-{build}'];
 const PLATFORMS = ['android', 'ios'];
-const TOP_KEYS = ['version', 'open-pull-requests-limit', 'reviewers', 'apps'];
+const TOP_KEYS = ['version', 'open-pull-requests-limit', 'reviewers', 'notify', 'apps'];
+const NOTIFY_KEYS = ['type', 'webhook-env'];
 const APP_KEYS = ['name', 'platform', 'crashlytics-app-id', 'packages', 'ignore-frames', 'probes', 'release-tags', 'releases', 'modules'];
 const XCODE_KEYS = ['xcode-scheme', 'xcode-workspace', 'xcode-project', 'xcode-destination', 'xcode-args'];
 const MODULE_KEYS = ['path', 'gradle-task', ...XCODE_KEYS];
@@ -106,7 +111,22 @@ export function parseConfig(text) {
       modules,
     };
   });
-  return { openPullRequestsLimit: limit, reviewers: stringList(raw.reviewers, 'reviewers', null), apps };
+  return { openPullRequestsLimit: limit, reviewers: stringList(raw.reviewers, 'reviewers', null), notify: notifyTargets(raw.notify), apps };
+}
+
+// Where alerts go: each target names the environment variable that holds its webhook URL, never the URL.
+function notifyTargets(value) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) fail(null, '"notify" must be a list, such as [{type: discord, webhook-env: DEKAPUT_DISCORD_WEBHOOK}]');
+  return value.map((target, i) => {
+    const where = `notify[${i}]`;
+    onlyKnown(target, NOTIFY_KEYS, where);
+    if (!NOTIFY_TYPES.includes(target.type)) fail(where, `"type" must be one of ${NOTIFY_TYPES.join(', ')}`);
+    if (typeof target['webhook-env'] !== 'string' || !/^[A-Z_][A-Z0-9_]*$/.test(target['webhook-env'])) {
+      fail(where, '"webhook-env" must name an environment variable, such as DEKAPUT_DISCORD_WEBHOOK (never the webhook URL itself)');
+    }
+    return { type: target.type, webhookEnv: target['webhook-env'] };
+  });
 }
 
 export function loadConfig(root) {

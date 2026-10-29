@@ -85,7 +85,8 @@ export function openPr(opts) {
   const bodyFile = path.join(bodyDir, 'body.md');
   fs.writeFileSync(bodyFile, body);
   try {
-    return createPr(root, { branch, base, title: opts.title, bodyFile });
+    const url = createPr(root, { branch, base, title: opts.title, bodyFile });
+    return { url, receipt: check.receipt, also: opts.also };
   } finally {
     fs.rmSync(bodyDir, { recursive: true, force: true });
   }

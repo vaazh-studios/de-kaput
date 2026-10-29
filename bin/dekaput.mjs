@@ -10,6 +10,7 @@ import { appFor, listOptions, loadConfig } from '../src/config.mjs';
 import { git, originRepo, repoRoot } from '../src/git.mjs';
 import { formatList, listCrashes, PR_LABEL } from '../src/list.mjs';
 import { parseMapping } from '../src/mapping.mjs';
+import { noteMessage, prMessage, sendAlerts, TEST_MESSAGE } from '../src/notify.mjs';
 import { OPEN_PR_OPTIONS, openPr } from '../src/open-pr.mjs';
 import { dekaputDir } from '../src/receipt.mjs';
 import { verify, VERIFY_OPTIONS } from '../src/verify.mjs';
@@ -25,6 +26,8 @@ const USAGE = `usage:
                  --anchor <frame or class> [--anchor-kind frame|message] [--release <ref>]
                  (an Xcode filter is Target/Class/method or Target/function(); the exception EXC_BREAKPOINT, SIGABRT or an NSException name)
   dekaput open-pr --title <title> --body-file <file> [--also <issue id>]
+  dekaput notify --issue <id> --note <text> [--uri <console link>] | --test
+               (posts to the config's notify targets; open-pr posts on its own)
   dekaput runbook   (prints the runbook the agent follows, the one that matches this CLI)`;
 
 function list(args) {
@@ -88,6 +91,19 @@ function list(args) {
   console.log(values.json ? JSON.stringify(result, null, 2) : formatList(result));
 }
 
+// The config's alert targets; none without a config.
+const notifyTargets = () => loadConfig(repoRoot())?.notify ?? [];
+
+// An alert for a note the agent added (open-pr posts its own), or a test message.
+async function notify(args) {
+  const { values } = parseArgs({ args, options: { issue: { type: 'string' }, note: { type: 'string' }, uri: { type: 'string' }, test: { type: 'boolean', default: false } } });
+  if (!values.test && !(values.issue && values.note)) throw new Error('give --issue and --note, or --test');
+  const targets = notifyTargets();
+  if (!targets.length) throw new Error('no notify targets in the config; add notify: [{type: discord, webhook-env: NAME}]');
+  const results = await sendAlerts(targets, values.test ? TEST_MESSAGE : noteMessage({ issue: values.issue, note: values.note, uri: values.uri }));
+  for (const r of results) console.log(`${r.type}: ${r.sent ? 'sent' : 'not sent'}`);
+}
+
 // What the agent asks the person when the config does not pick a release, and the
 // Crashlytics names it reads the crashes of.
 function releases(args) {
@@ -135,7 +151,12 @@ try {
     console.log(JSON.stringify(result.ok ? result.receipt : { ok: false, reproduced: result.reproduced, reason: result.reason, runs: result.runs }, null, 2));
     // 3: reproduced, the fix is still to write; 1: rejected.
     process.exitCode = result.ok ? 0 : result.reproduced ? 3 : 1;
-  } else if (command === 'open-pr') console.log(openPr(parseArgs({ args, options: OPEN_PR_OPTIONS }).values));
+  } else if (command === 'open-pr') {
+    const values = parseArgs({ args, options: OPEN_PR_OPTIONS }).values;
+    const { url, receipt, also } = openPr(values);
+    console.log(url);
+    await sendAlerts(notifyTargets(), prMessage({ title: values.title, url, issues: [receipt.issue, ...also], result: receipt.result }));
+  } else if (command === 'notify') await notify(args);
   // Read from the installed package, wherever npm, pnpm or Volta put it.
   else if (command === 'runbook') process.stdout.write(fs.readFileSync(new URL('../RUNBOOK.md', import.meta.url), 'utf8'));
   else {

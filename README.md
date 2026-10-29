@@ -32,6 +32,9 @@ Add `.github/de-kaput.yml` to your app's repo, next to `dependabot.yml`:
 version: 1
 open-pull-requests-limit: 5        # most de-kaput PRs open at once
 reviewers: [your-github-name]      # asked to review every PR
+notify:                            # optional: a message when a PR opens or a note is added
+  - type: discord                  # or slack
+    webhook-env: DEKAPUT_DISCORD_WEBHOOK   # the environment variable holding the webhook URL
 
 apps:
   - name: android
@@ -68,6 +71,7 @@ With it, the commands need no app-specific flags: `list` takes each crash's app 
 - `probes` are regular expressions, matched without regard to case against the crash's exception line and message.
 - `release-tags` default to `{platform}/v{version}-{build}`, then `v{version}-{build}`. `{version}` and `{build}` come from Crashlytics' name for the build, such as `1.4 (77)`, and `{platform}` is `android` or `ios`; the first pattern that names an existing tag wins. `{build}` matches digits only and `{version}` any text without spaces, so a tag such as `ios/v1.5-2026.10.29` is not read as a release, and a Crashlytics version without a build number in brackets matches no tag.
 - `releases` picks the releases a run works on: `latest` (the newest tagged release, so it needs release tags), a release written as its tag (`android/v1.4-75`) or as Crashlytics names it (`1.4 (75)`), or a list of them. Without it the agent asks you each run, listing the tagged releases (`dekaput releases` prints them). A release you name when you start the run wins over the file for its app; a tag names one app's release, while a Crashlytics name applies to every app. A run nobody is watching needs it set.
+- `notify` sends a short message to Discord or Slack when `open-pr` opens a pull request or the agent adds a note (`dekaput notify`). Each target names the environment variable that holds its webhook URL, so the URL stays out of the repo. A target whose variable is not set is skipped with a warning, and an alert never fails a run.
 - The file can also be `de-kaput.yml` at the repo root.
 
 ## Setup
@@ -95,6 +99,8 @@ On the machine the agent runs on: steps 1 to 4 once per machine, 5 to 7 once per
    - Codex: add one line to your project's `AGENTS.md`: "To fix a Crashlytics crash, run `dekaput runbook` and follow what it prints: one crash at a time, one pull request per crash."
 
 The app's tests must also run on that machine: Gradle with its `local.properties`, or Xcode with an iPhone simulator.
+
+For alerts, create an incoming webhook for the channel (Discord: Server Settings, Integrations, Webhooks; Slack: an app with Incoming Webhooks), put its URL in the environment variable your `notify` entry names, and check it with `dekaput notify --test`.
 
 Then ask the agent to "fix the latest release's crashes with de-kaput". It reads the release's top crashes through the MCP server, runs `dekaput list`, and works through the queue one crash and one pull request at a time, as the runbook says.
 

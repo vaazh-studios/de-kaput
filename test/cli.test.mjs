@@ -2,10 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const bin = fileURLToPath(new URL('../bin/dekaput.mjs', import.meta.url));
 const run = (...args) => spawnSync('node', [bin, ...args], { cwd: '/', encoding: 'utf8' });
+const runIn = (cwd, ...args) => spawnSync('node', [bin, ...args], { cwd, encoding: 'utf8' });
 
 test('runbook prints the RUNBOOK.md that ships with the CLI', () => {
   const printed = execFileSync('node', [bin, 'runbook'], { cwd: '/', encoding: 'utf8' });
@@ -24,4 +27,36 @@ test('--version prints the package version; an unknown command exits 2', () => {
   const { version } = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
   assert.equal(run('--version').stdout.trim(), version);
   assert.equal(run('lsit').status, 2);
+});
+
+// A repo with release tags, a config that picks the latest Android release, and two crash events.
+function repoWithReleases() {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'dekaput-cli-')));
+  const git = (...args) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' });
+  fs.mkdirSync(path.join(dir, '.github'));
+  fs.writeFileSync(path.join(dir, '.github/de-kaput.yml'), 'version: 1\napps:\n  - platform: android\n    crashlytics-app-id: "1:1:android:x"\n    packages: [com.example.app]\n    releases: latest\n');
+  git('init', '-q');
+  git('add', '-A');
+  git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'init');
+  for (const tag of ['android/v1.3-71', 'android/v1.4-75', 'ios/v1.4-77']) git('tag', tag);
+  const fixture = (name) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
+  fs.writeFileSync(path.join(dir, 'prs.json'), '[]');
+  return { dir, events: [fixture('android-currenttab-obfuscated.json'), fixture('android-oom-kitatlas.json')] };
+}
+
+test('releases lists the tagged releases newest first and what the config picks', () => {
+  const { dir } = repoWithReleases();
+  const [android] = JSON.parse(runIn(dir, 'releases', '--json').stdout);
+  assert.deepEqual(android.releases, [{ name: '1.4 (75)', tag: 'android/v1.4-75' }, { name: '1.3 (71)', tag: 'android/v1.3-71' }]);
+  assert.deepEqual(android.selected, ['1.4 (75)']);
+});
+
+test('list keeps only the picked releases; --release wins over the config', () => {
+  const { dir, events } = repoWithReleases();
+  const listed = (...flags) => JSON.parse(runIn(dir, 'list', '--json', '--prs', 'prs.json', ...flags, ...events).stdout).crashes;
+  const skipped = (crashes) => crashes.filter((c) => c.stop === 'skip').map((c) => c.version);
+  assert.deepEqual(skipped(listed()), ['1.4 (77)']);
+  assert.deepEqual(skipped(listed('--release', '1.4 (77)')), ['1.4 (75)']);
+  assert.deepEqual(skipped(listed('--release', 'android/v1.4-75', '--release', '1.4 (77)')), []);
+  assert.match(runIn(dir, 'list', '--prs', 'prs.json', '--release', 'android/v9.9-99', ...events).stderr, /neither a release tag/);
 });

@@ -91,3 +91,16 @@ test("with a config, each crash takes its platform's app, and a platform with no
   assert.equal(crashes.find((c) => c.platform === 'ANDROID').stop, 'attempt');
   assert.equal(crashes.find((c) => c.platform === 'ANDROID').release, '1.4+77');
 });
+
+test('with releases picked, crashes from other versions are set aside', () => {
+  const releasesOf = (platform) => (platform === 'android' ? new Set(['1.4 (75)']) : null);
+  const { crashes, queue } = listCrashes(events, { options, sourceSetOf: inMain, releasesOf });
+  const byId = Object.fromEntries(crashes.map((c) => [c.issueId.slice(0, 4), c]));
+  assert.equal(byId.f26e.version, '1.4 (75)');
+  assert.notEqual(byId.f26e.stop, 'skip');
+  for (const id of ['e044', 'a2bf']) {
+    assert.equal(byId[id].stop, 'skip');
+    assert.match(byId[id].reason, /^from 1\.4 \(77\), not a release this run works on \(1\.4 \(75\)\)$/);
+  }
+  assert.deepEqual(queue.map((c) => c.issueId.slice(0, 4)), ['f26e']);
+});

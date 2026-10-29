@@ -106,3 +106,12 @@ test('an Xcode module at the repo root holds every file; its keys are checked', 
   assert.deepEqual(ios('        xcode-scheme: A\n        xcode-args: ["CODE_SIGNING_ALLOWED=NO", "-testPlan", "CI"]\n').modules[0].xcode.args, ['CODE_SIGNING_ALLOWED=NO', '-testPlan', 'CI']);
   assert.throws(() => ios('        xcode-scheme: A\n        xcode-args: CODE_SIGNING_ALLOWED=NO\n'), /"xcode-args" must be a list of strings/);
 });
+
+test('releases: unset is null (the agent asks); one release or a list reads back as a list', () => {
+  const app = (releases) => parseConfig(`version: 1\napps:\n  - platform: ios\n    crashlytics-app-id: "1:1:ios:x"\n${releases}`).apps[0].releases;
+  assert.equal(app(''), null);
+  assert.deepEqual(app('    releases: latest\n'), ['latest']);
+  assert.deepEqual(app('    releases: ["ios/v1.4-77", "1.4 (75)"]\n'), ['ios/v1.4-77', '1.4 (75)']);
+  assert.throws(() => app('    releases: []\n'), /"releases" must not be empty/);
+  assert.throws(() => app('    releases: 77\n'), /"releases" must be a list of strings/);
+});

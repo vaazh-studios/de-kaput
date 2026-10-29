@@ -13,7 +13,8 @@
 //       ignore-frames: [com.example.app.crashreporting]   # its own crash reporter
 //       probes: ["crash-reporting canary"]                # errors it raises on purpose
 //       release-tags: ["{platform}/v{version}-{build}", "v{version}-{build}"]
-//       modules:                       # where tests live, and what runs them
+//       releases: latest               # optional: latest, a release (tag or "1.4 (77)"), or a list; without it the agent asks
+//       modules:                      # where tests live, and what runs them
 //         - path: shared/presentation
 //           gradle-task: ":shared:presentation:testAndroidHostTest"
 //         - path: ios                  # "." for the repo root
@@ -30,7 +31,7 @@ export const CONFIG_FILES = ['.github/de-kaput.yml', 'de-kaput.yml'];
 export const DEFAULT_RELEASE_TAGS = ['{platform}/v{version}-{build}', 'v{version}-{build}'];
 const PLATFORMS = ['android', 'ios'];
 const TOP_KEYS = ['version', 'open-pull-requests-limit', 'reviewers', 'apps'];
-const APP_KEYS = ['name', 'platform', 'crashlytics-app-id', 'packages', 'ignore-frames', 'probes', 'release-tags', 'modules'];
+const APP_KEYS = ['name', 'platform', 'crashlytics-app-id', 'packages', 'ignore-frames', 'probes', 'release-tags', 'releases', 'modules'];
 const XCODE_KEYS = ['xcode-scheme', 'xcode-workspace', 'xcode-project', 'xcode-destination', 'xcode-args'];
 const MODULE_KEYS = ['path', 'gradle-task', ...XCODE_KEYS];
 
@@ -100,6 +101,8 @@ export function parseConfig(text) {
       ignoreFrames: stringList(app['ignore-frames'], 'ignore-frames', where),
       probes: stringList(app.probes, 'probes', where),
       releaseTags: app['release-tags'] === undefined ? DEFAULT_RELEASE_TAGS : stringList(app['release-tags'], 'release-tags', where),
+      // null: the config does not say, so the agent asks the person which release.
+      releases: app.releases === undefined ? null : stringList(typeof app.releases === 'string' ? [app.releases] : app.releases, 'releases', where, { required: true }),
       modules,
     };
   });

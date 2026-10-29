@@ -12,8 +12,8 @@ It never fixes blind: no pull request without a test that fails with the crash's
 
 ![de-kaput: dekaput list queues the release's crashes; for each crash, one at a time: its commit, a new git worktree, a test that crashes, dekaput verify, dekaput open-pr; one pull request per crash](assets/how-it-works.svg)
 
-1. Your coding agent (Codex or Claude Code) reads the latest release's top crashes from Crashlytics through the Firebase MCP server.
-2. `dekaput list` skips crashes that already have a pull request and puts the rest in a queue.
+1. Your coding agent (Codex or Claude Code) reads the top crashes of the release you pick, or the one your config picks, from Crashlytics through the Firebase MCP server.
+2. `dekaput list` skips crashes that already have a pull request or come from another release, and puts the rest in a queue.
 3. **For each crash in the queue, one at a time**, like Dependabot does for each dependency:
    - it finds the commit that crash was built from: the git revision Crashlytics recorded for the build, or your release tag;
    - the agent checks out a new git worktree on a fresh branch from your default branch, so your own checkout is never touched, and writes a test that reproduces the crash, then fixes it;
@@ -41,6 +41,7 @@ apps:
     ignore-frames: [com.example.app.crashreporting]   # your crash reporter, never the cause
     probes: ["crash-reporting canary"]                # errors you raise on purpose
     release-tags: ["android/v{version}-{build}", "v{version}-{build}"]
+    releases: latest               # or a release, or a list; leave it out to be asked each run
     modules:                       # where tests live, and what runs them
       - path: app
         gradle-task: ":app:testDebugUnitTest"
@@ -65,6 +66,7 @@ Only `version`, each app's `platform` and `crashlytics-app-id`, and an Android a
 - `name` defaults to the platform, `open-pull-requests-limit` to 5, and `reviewers` to nobody.
 - `probes` are regular expressions, matched without regard to case against the crash's exception line and message.
 - `release-tags` default to `{platform}/v{version}-{build}`, then `v{version}-{build}`. `{version}` and `{build}` come from Crashlytics' name for the build, such as `1.4 (77)`, and `{platform}` is `android` or `ios`; the first pattern that names an existing tag wins.
+- `releases` picks the releases a run works on: `latest` (the newest tagged release), a release written as its tag (`android/v1.4-75`) or as Crashlytics names it (`1.4 (75)`), or a list of them. Without it the agent asks you each run, listing the tagged releases (`dekaput releases` prints them). A release you name when you start the run wins over the file. A run nobody is watching needs it set.
 - The file can also be `de-kaput.yml` at the repo root.
 
 ## Setup

@@ -34,8 +34,14 @@ function shapeOf(subtitle, appPackages) {
 
 // options: { appPackages, ignoreFrames, probes, releaseTags } for every crash, or
 // optionsFor(event) to pick them per crash (the config's app for its platform; null when none).
-export function listCrashes(events, { prs = [], options = {}, optionsFor = null, sourceSetOf = () => null, nativeFileOf = () => null, tags = [], mapping = null, maxPrs = 5 } = {}) {
+// releasesOf(platform): the Crashlytics version names this run works on, or null for any.
+export function listCrashes(events, { prs = [], options = {}, optionsFor = null, sourceSetOf = () => null, nativeFileOf = () => null, tags = [], mapping = null, maxPrs = 5, releasesOf = () => null } = {}) {
   const optsOf = (event) => (optionsFor ? optionsFor(event) : options);
+  // A crash from a version the run was not asked for is set aside, so a wrong fetch never becomes a PR.
+  const outsideReleases = (event) => {
+    const wanted = releasesOf(event.platform.toLowerCase());
+    return wanted && !wanted.has(event.version) ? { stop: 'skip', reason: `from ${event.version ?? 'an unknown version'}, not a release this run works on (${[...wanted].join(', ')})` } : null;
+  };
   const fatal = events
     .filter((e) => e.errorType === 'FATAL')
     .map((e) => (mapping ? (({ event, decoded }) => ({ ...event, decoded }))(deobfuscateEvent(e, mapping)) : e));
@@ -49,12 +55,13 @@ export function listCrashes(events, { prs = [], options = {}, optionsFor = null,
       platform: event.platform,
       title: event.title,
       subtitle: event.subtitle,
+      version: event.version ?? null,
       users: issue.impactedUsersCount ?? null,
       events: issue.eventsCount ?? null,
       handled: handledBy(event.issueId, prs, event.notes ?? []),
       appPackages: optsOf(event)?.appPackages ?? [],
       ...(event.decoded && Object.keys(event.decoded).length ? { decoded: event.decoded } : {}),
-      ...(optsOf(event) ? classifyIssue(event, sourceSetOf, { ...optsOf(event), nativeFileOf }) : { stop: 'skip', reason: `no app for ${event.platform.toLowerCase()} in the config` }),
+      ...(outsideReleases(event) ?? (optsOf(event) ? classifyIssue(event, sourceSetOf, { ...optsOf(event), nativeFileOf }) : { stop: 'skip', reason: `no app for ${event.platform.toLowerCase()} in the config` })),
       // Android events carry the build's git revision (buildStamp); it beats a tag lookup.
       release: event.revision ?? tagFor(event.platform.toLowerCase(), event.version, tags, optsOf(event)?.releaseTags),
       evidence: evidenceMarkdown(issue, [event]),

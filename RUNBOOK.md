@@ -10,8 +10,13 @@ With the Firebase MCP server, for each app's `crashlytics-app-id` in `.github/de
 
 Every `crashlytics_get_report` call here takes a time range in its `filter`: `intervalStartTime` 89 days ago and `intervalEndTime` now, both ISO 8601 (Crashlytics refuses a start 90 or more days back). Without one it counts only the last 7 days, which under-counts a release that has been out longer.
 
-1. Find the **latest release**: the newest version that was actually released (it has a release tag, or you were told which). `crashlytics_get_report` with `report: "topVersions"` lists versions by event count, not by age, and includes internal builds, so do not take its first row.
-2. `crashlytics_get_report` with `report: "topIssues"`, `pageSize: 10` and `filter: { issueErrorTypes: ["FATAL"], versionDisplayNames: ["<the latest version>"], intervalStartTime, intervalEndTime }`.
+1. **Pick the releases.** Run `dekaput releases --json`. For each app it lists the tagged releases, newest first (`name` is Crashlytics' name for the build, `tag` its git tag), and `selected`, the releases the config's `releases` picks.
+   - If you were told which releases to work on, use those.
+   - Otherwise, if `selected` is set, use it.
+   - Otherwise ask the person, once per app: the latest release (the first one listed), or one or more of the listed ones. If no one can answer (a scheduled run), stop and say to set `releases` in `.github/de-kaput.yml`.
+
+   Crashlytics' `topVersions` report also lists internal and local builds; a version without a release tag is not a release.
+2. `crashlytics_get_report` with `report: "topIssues"`, `pageSize: 10` and `filter: { issueErrorTypes: ["FATAL"], versionDisplayNames: [<the releases' names>], intervalStartTime, intervalEndTime }`.
 3. For each issue: `crashlytics_batch_get_events` on its `sampleEvent`, and `crashlytics_list_notes`.
 4. Write one file per issue to `.dekaput/events/<issue id>.json` with **only** these fields, copied verbatim:
    `issueId, platform, errorType, title, subtitle, version` (the version's `displayName`), `device` (its `displayName`), `os` (its `displayName`), `exceptions, threads`, `revision` (the event's `buildStamp` revision, when present), `issue: { id, title, subtitle, eventsCount, impactedUsersCount, uri }` (from the report) and `notes: [{ body, createTime }]`.
@@ -23,10 +28,10 @@ On Android with R8, Crashlytics reads the frames back to real names but not the 
 
 
 ```bash
-dekaput list --json .dekaput/events/*.json
+dekaput list --json [--release '<name>']... .dekaput/events/*.json
 ```
 
-It reads the app's packages, crash-reporter frames, probes, release tags and PR limit from `.github/de-kaput.yml`. Without that file, pass `--app-package <package>`, `--ignore-frame <package>` and `--probe <regex>`. `--max-prs <n>` (default 5) caps how many de-kaput pull requests can be open at once, like Dependabot's `open-pull-requests-limit`; crashes past it wait for the next run. Without `--json` it prints a short list for people, with issue ids cut to 8 characters and without the values step 4 needs.
+Pass `--release` once for each release you were told or the person picked; releases the config picks need no flag. `list` sets aside crashes from any other version. It reads the app's packages, crash-reporter frames, probes, release tags and PR limit from `.github/de-kaput.yml`. Without that file, pass `--app-package <package>`, `--ignore-frame <package>` and `--probe <regex>`. `--max-prs <n>` (default 5) caps how many de-kaput pull requests can be open at once, like Dependabot's `open-pull-requests-limit`; crashes past it wait for the next run. Without `--json` it prints a short list for people, with issue ids cut to 8 characters and without the values step 4 needs.
 
 Work through `queue` in order, **one crash at a time**. Each entry's `stop` says what to do:
 

@@ -1,6 +1,6 @@
 {
   "name": "de-kaput",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "Reproduce the crash with a test, fix it, open a pull request with proof. For native Android, native iOS and KMP apps.",
   "keywords": [
     "crashlytics",
